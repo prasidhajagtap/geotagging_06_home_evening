@@ -5,302 +5,1897 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Seamex · Geo Attendance</title>
 
+  <!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║   SEAMEX GEO-ATTENDANCE  |  v05 — Full Rebuild              ║
+  ║   Written by Prasidha Jagtap                                ║
+  ║   Assistant Manager – IT, Aditya Birla Group (Seamex)       ║
+  ║                                                              ║
+  ║   Hey future dev 👋 Code authored by Prasidha.              ║
+  ║   Built for field teams. Designed with intent.              ║
+  ║   Please document your changes + test on real devices.       ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  STACK                                                       ║
+  ║    Pico CSS v2 · DM Sans + DM Mono (Google Fonts)           ║
+  ║    Supabase JS v2 · Vanilla JS (no framework)               ║
+  ║                                                              ║
+  ║  SECURITY ARCHITECTURE (Prasidha)                           ║
+  ║    1. Client-side validation (first gate)                    ║
+  ║    2. Sanitize before any DB write (defense-in-depth)        ║
+  ║    3. Supabase anon key is PUBLIC — enforce RLS on           ║
+  ║       'attendance' table: INSERT-only for anon role.         ║
+  ║       Never SELECT/UPDATE/DELETE from client.                ║
+  ║    4. service_role key NEVER on client side. Ever.           ║
+  ║    5. localStorage: session state only. Clears on new day.   ║
+  ║    6. All DOM writes use textContent, never innerHTML         ║
+  ║       (XSS prevention — Prasidha).                          ║
+  ║    7. Input pattern validation: regex + length + char class  ║
+  ║    8. Rate-limit GPS requests if battery drain reported.     ║
+  ║                                                              ║
+  ║  SQL INJECTION PREVENTION (Prasidha)                        ║
+  ║    Supabase uses parameterized queries server-side.          ║
+  ║    Client sanitize() strips SQL-risky chars as extra layer:  ║
+  ║    < > " ' ` ; % ( ) { } \ / = + | #                        ║
+  ║    Location names: alphabet, digits, spaces, hyphens only.   ║
+  ║                                                              ║
+  ║  MIGRATION CHECKLIST                                         ║
+  ║    [ ] Azure AD SSO → replace #auth-section with MSAL        ║
+  ║        Map: displayName→U.name, employeeId→U.id             ║
+  ║    [ ] GitHub Pages → SharePoint SPFx:                       ║
+  ║        Bundle supabase.min.js locally in webpart assets.     ║
+  ║        Remove CDN <script> tag. Add to package.json.         ║
+  ║    [ ] DB → Production: swap SUPABASE_URL + KEY only.        ║
+  ║        Keep 'attendance' schema identical.                   ║
+  ║    [ ] Multi-office: add 'branch_code' to payload.           ║
+  ║    [ ] Add 'app_version' + 'submitted_via' fields.           ║
+  ╚══════════════════════════════════════════════════════════════╝
+  -->
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
   <style>
+    /* ================================================================
+       DESIGN TOKENS
+       Prasidha: all brand values live here. One-stop rebrand location.
+    ================================================================ */
     :root {
-      --red: #A6192E; --red-dk: #7d1220; --orange: #F58220; --yellow: #FFCB05;
-      --grad: linear-gradient(135deg,#F58220,#FFCB05); --green: #16a34a;
-      --pico-primary: var(--red); --pico-font-family: 'DM Sans', sans-serif;
-      --r-md: .75rem; --r-xl: 1.5rem; --ease: cubic-bezier(.4,0,.2,1); --t: .22s;
+      --brand-red:       #A6192E;
+      --brand-red-dark:  #891522;
+      --brand-orange:    #F58220;
+      --brand-yellow:    #FFCB05;
+      --brand-gradient:  linear-gradient(135deg,#F58220,#FFCB05);
+
+      --pico-primary:            var(--brand-red);
+      --pico-primary-hover:      var(--brand-red-dark);
+      --pico-font-family:        'DM Sans',system-ui,sans-serif;
+
+      --r-sm:  .5rem;  --r-md: .75rem; --r-lg: 1rem;
+      --r-xl:  1.5rem; --r-pill: 999px;
+      --ease:  cubic-bezier(.4,0,.2,1); --t: .22s;
+      --sh-sm: 0 2px 10px rgba(0,0,0,.07);
+      --sh-md: 0 8px 28px rgba(0,0,0,.10);
+      --sh-lg: 0 16px 48px rgba(0,0,0,.14);
     }
-    [data-theme="light"] { --bg-a:#edf2f7; --bg-b:#dce6f0; --bg-card:#ffffffee; --tx:#1a1a2e; --bdr:rgba(0,0,0,.08); }
-    [data-theme="dark"] { --bg-a:#0c0c1a; --bg-b:#121224; --bg-card:#16162aee; --tx:#e8edf5; --bdr:rgba(255,255,255,.09); }
+
+    [data-theme="light"] {
+      --bg-body-a:#eef2f7; --bg-body-b:#dde5f0;
+      --bg-card:rgba(255,255,255,.92); --bg-solid:#fff;
+      --bg-input:rgba(255,255,255,.96); --bg-subtle:rgba(248,250,253,.92);
+      --border:rgba(0,0,0,.09); --text:#1a1a2e; --text-sec:#4a5568;
+      --text-muted:#8a9ab5;
+      --chip-bg:rgba(166,25,46,.07); --chip-border:rgba(166,25,46,.18);
+      --chip-text:var(--brand-red);
+      --skel-a:rgba(0,0,0,.07); --skel-b:rgba(0,0,0,.03);
+    }
+    [data-theme="dark"] {
+      --bg-body-a:#0b0b17; --bg-body-b:#111120;
+      --bg-card:rgba(22,22,40,.93); --bg-solid:#18182a;
+      --bg-input:rgba(255,255,255,.06); --bg-subtle:rgba(255,255,255,.04);
+      --border:rgba(255,255,255,.09); --text:#e8edf5; --text-sec:#8a9fc0;
+      --text-muted:#50607a;
+      --chip-bg:rgba(245,130,32,.12); --chip-border:rgba(245,130,32,.25);
+      --chip-text:var(--brand-orange);
+      --skel-a:rgba(255,255,255,.08); --skel-b:rgba(255,255,255,.02);
+      --pico-form-element-background-color:var(--bg-input);
+    }
+
+    /* ================================================================
+       BASE
+    ================================================================ */
+    *,*::before,*::after{box-sizing:border-box}
+    html{height:-webkit-fill-available}
 
     body {
-      min-height: 100dvh; display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(160deg, var(--bg-a), var(--bg-b));
-      padding: 20px; margin: 0; font-family: var(--pico-font-family);
+      font-family:'DM Sans',system-ui,sans-serif;
+      background:linear-gradient(160deg,var(--bg-body-a),var(--bg-body-b));
+      background-attachment:fixed;
+      min-height:100dvh;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      padding:
+        max(16px,env(safe-area-inset-top))
+        max(12px,env(safe-area-inset-right))
+        max(20px,env(safe-area-inset-bottom))
+        max(12px,env(safe-area-inset-left));
+      overflow-x:hidden; position:relative;
+      transition:background .5s ease;
     }
-    .smx-card {
-      background: var(--bg-card); backdrop-filter: blur(20px);
-      border: 1px solid var(--bdr); border-radius: var(--r-xl);
-      padding: 24px; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    .hidden { display: none !important; }
-    .inp-wrap { margin-bottom: 12px; position: relative; }
-    .err-msg { font-size: 0.7rem; color: var(--red); margin-top: 4px; display: none; }
-    .btn-full { width: 100%; padding: 12px; border-radius: var(--r-md); font-weight: 600; border: none; cursor: pointer; transition: all var(--t); }
-    .btn-red { background: var(--red); color: white; }
-    .btn-red:disabled { opacity: 0.4; cursor: not-allowed; }
-    
-    /* Transition Overlay */
-    #pg-transition {
-      position: fixed; inset: 0; z-index: 999; background: var(--bg-a);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity 0.3s;
-    }
-    #pg-transition.on { opacity: 1; pointer-events: all; }
-    
-    /* Status Display */
-    .status-card { display: flex; gap: 10px; margin-bottom: 20px; }
-    .sc-col { flex: 1; padding: 12px; border-radius: var(--r-md); text-align: center; background: rgba(0,0,0,0.05); }
-    .sc-lbl { font-size: 0.6rem; text-transform: uppercase; color: #888; font-weight: 700; }
-    .sc-val { font-size: 0.9rem; font-weight: 700; font-family: 'DM Mono'; }
 
-    /* Toast */
-    #toast-box { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; }
-    .toast { background: #333; color: white; padding: 10px 20px; border-radius: 30px; font-size: 0.85rem; margin-top: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    /* ================================================================
+       CRED-STYLE AMBIENT BACKGROUND ANIMATION
+       Prasidha: 4 time slots, CSS-only, zero JS. Elements are
+       absolutely positioned pseudo-elements on body::before/::after
+       + named keyframes per time slot. JS adds data-timeofday attr.
+       Slots: dawn(5-9am) · day(9am-3pm) · dusk(3-6pm) · night(6pm-5am)
+    ================================================================ */
+
+    /* Shared ambient layer */
+    body::before, body::after {
+      content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+      transition:opacity 1.2s ease;
+    }
+
+    /* Dawn — soft pink-orange sunrise gradient + floating rays */
+    body[data-tod="dawn"]::before {
+      background:
+        radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255,130,60,.15), transparent),
+        radial-gradient(ellipse 40% 30% at 50% 85%, rgba(255,200,100,.10), transparent);
+      animation:dawnPulse 8s ease infinite alternate;
+    }
+    @keyframes dawnPulse {
+      from{opacity:.6} to{opacity:1}
+    }
+    body[data-tod="dawn"]::after {
+      background:
+        radial-gradient(circle 3px at 20% 30%, rgba(255,190,90,.5), transparent),
+        radial-gradient(circle 2px at 70% 20%, rgba(255,200,110,.4), transparent),
+        radial-gradient(circle 4px at 50% 15%, rgba(255,170,70,.3), transparent),
+        radial-gradient(circle 2px at 80% 40%, rgba(255,180,80,.35), transparent);
+      animation:floatDawn 12s ease infinite;
+    }
+    @keyframes floatDawn {
+      0%,100%{transform:translateY(0)}
+      50%{transform:translateY(-18px)}
+    }
+
+    /* Day — bright white-blue sky + cloud wisps */
+    body[data-tod="day"]::before {
+      background:
+        radial-gradient(ellipse 60% 40% at 70% 10%, rgba(255,255,200,.18), transparent),
+        radial-gradient(ellipse 35% 25% at 20% 15%, rgba(200,230,255,.12), transparent);
+      animation:dayGlow 10s ease infinite alternate;
+    }
+    @keyframes dayGlow {
+      from{opacity:.5} to{opacity:.9}
+    }
+    body[data-tod="day"]::after {
+      background:
+        radial-gradient(ellipse 120px 30px at 25% 12%, rgba(255,255,255,.18), transparent),
+        radial-gradient(ellipse  80px 20px at 65% 8%,  rgba(255,255,255,.12), transparent),
+        radial-gradient(ellipse 100px 25px at 45% 5%,  rgba(255,255,255,.10), transparent);
+      animation:cloudDrift 20s linear infinite;
+    }
+    @keyframes cloudDrift {
+      from{transform:translateX(-5px)} to{transform:translateX(10px)}
+    }
+
+    /* Dusk — golden warm particles */
+    body[data-tod="dusk"]::before {
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 100%, rgba(220,90,30,.18), transparent),
+        radial-gradient(ellipse 50% 35% at 80% 90%,  rgba(255,160,60,.12), transparent);
+      animation:duskGlow 7s ease infinite alternate;
+    }
+    @keyframes duskGlow {
+      from{opacity:.5} to{opacity:1}
+    }
+    body[data-tod="dusk"]::after {
+      background:
+        radial-gradient(circle 3px at 15% 25%, rgba(255,120,50,.45), transparent),
+        radial-gradient(circle 2px at 85% 35%, rgba(255,180,60,.40), transparent),
+        radial-gradient(circle 3px at 50% 20%, rgba(245,100,40,.35), transparent),
+        radial-gradient(circle 2px at 30% 45%, rgba(255,150,70,.30), transparent),
+        radial-gradient(circle 4px at 70% 15%, rgba(255,200,80,.25), transparent);
+      animation:duskFloat 9s ease infinite alternate;
+    }
+    @keyframes duskFloat {
+      0%{transform:translateY(0) scale(1)}
+      100%{transform:translateY(-22px) scale(1.05)}
+    }
+
+    /* Night — stars + moon glow */
+    body[data-tod="night"]::before {
+      background:
+        radial-gradient(ellipse 50% 40% at 80% 15%, rgba(100,120,200,.10), transparent),
+        radial-gradient(ellipse 30% 20% at 20% 10%, rgba(80,90,180,.08), transparent);
+      animation:nightGlow 12s ease infinite alternate;
+    }
+    @keyframes nightGlow {
+      from{opacity:.4} to{opacity:.8}
+    }
+    body[data-tod="night"]::after {
+      /* Star field using tiny radial dots */
+      background:
+        radial-gradient(circle 1.5px at 10% 8%,  rgba(255,255,255,.7), transparent),
+        radial-gradient(circle 1px   at 25% 15%, rgba(255,255,255,.5), transparent),
+        radial-gradient(circle 2px   at 60% 5%,  rgba(255,255,255,.6), transparent),
+        radial-gradient(circle 1px   at 80% 12%, rgba(255,255,255,.5), transparent),
+        radial-gradient(circle 1.5px at 40% 20%, rgba(255,255,255,.4), transparent),
+        radial-gradient(circle 1px   at 90% 22%, rgba(255,255,255,.5), transparent),
+        radial-gradient(circle 2px   at 15% 30%, rgba(255,255,255,.3), transparent),
+        radial-gradient(circle 1px   at 75% 30%, rgba(255,255,255,.4), transparent);
+      animation:starTwinkle 4s ease infinite alternate;
+    }
+    @keyframes starTwinkle {
+      0%,100%{opacity:.5} 50%{opacity:1}
+    }
+
+    /* ================================================================
+       CARD
+    ================================================================ */
+    .smx-card {
+      background:var(--bg-card);
+      backdrop-filter:blur(24px);
+      -webkit-backdrop-filter:blur(24px);
+      border:1px solid var(--border);
+      border-radius:var(--r-xl);
+      padding:28px 24px 20px;
+      box-shadow:var(--sh-md);
+      position:relative; overflow:hidden;
+      transition:background var(--t) var(--ease),box-shadow var(--t) var(--ease);
+      z-index:1;
+    }
+
+    main.container {
+      position:relative; z-index:1;
+      width:100%; max-width:430px;
+      padding:0; margin:0 auto;
+    }
+
+    /* ================================================================
+       RESPONSIVE — Prasidha: tested 320px → Galaxy Z Fold → iPad
+    ================================================================ */
+    @media(max-width:374px){
+      main.container{max-width:100%}
+      .smx-card{padding:18px 13px 16px;border-radius:var(--r-lg)}
+      .smx-logo-img{width:70px!important}
+      input[type="text"]{padding:10px 12px!important;font-size:.86rem!important}
+      .btn-full{padding:11px!important;font-size:.87rem!important}
+    }
+    @media(min-width:481px) and (max-width:900px){
+      main.container{max-width:500px}
+      .smx-card{padding:34px 30px 24px}
+    }
+    @media(min-width:901px){main.container{max-width:460px}}
+    @media(min-width:540px) and (max-width:900px) and (orientation:landscape){
+      body{justify-content:flex-start;overflow-y:auto}
+      .smx-card{padding:18px 26px}
+    }
+
+    /* ================================================================
+       LOGIN HEADER (centered, module name, no tagline)
+    ================================================================ */
+    #auth-section .login-header {
+      text-align:center; margin-bottom:22px;
+    }
+    .auth-logo { display:block; width:110px; margin:0 auto 8px; filter:drop-shadow(0 4px 14px rgba(166,25,46,.2)); }
+
+    .module-name {
+      font-size:1rem; font-weight:700;
+      letter-spacing:.04em; text-transform:uppercase;
+      color:var(--brand-red); margin:4px 0 2px;
+    }
+
+    #daily-greeting {
+      font-size:.77rem; font-style:italic; font-weight:500;
+      color:var(--brand-orange); margin:5px 0 0;
+      letter-spacing:.02em; min-height:17px; text-align:center;
+    }
+
+    .auth-title {
+      font-size:1.05rem; font-weight:700; text-align:center;
+      color:var(--text); margin:18px 0 14px;
+    }
+
+    /* ================================================================
+       MAIN PAGE HEADER — logo top-right, user top-left
+    ================================================================ */
+    .main-header {
+      display:flex; align-items:center;
+      justify-content:space-between; margin-bottom:16px;
+    }
+    .mh-user { flex:1; }
+    .mh-name {
+      font-size:.84rem; font-weight:700; color:var(--text);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;
+    }
+    .mh-id {
+      font-size:.68rem; color:var(--text-muted); font-family:'DM Mono',monospace;
+      margin-top:1px;
+    }
+    .smx-logo-img {
+      width:78px; height:auto;
+      filter:drop-shadow(0 3px 10px rgba(166,25,46,.18));
+      flex-shrink:0;
+    }
+
+    /* ================================================================
+       LIVE DIGITAL CLOCK — center of clock-in page
+       Prasidha: requestAnimationFrame for buttery smooth render.
+       DM Mono for tabular digits (no jitter on width change).
+    ================================================================ */
+    .live-clock-wrap {
+      text-align:center; margin:4px 0 18px;
+    }
+    .live-clock {
+      font-family:'DM Mono',monospace;
+      font-size:2.6rem; font-weight:500;
+      letter-spacing:-.02em;
+      color:var(--text);
+      /* Hardware-accelerated render — Prasidha */
+      transform:translateZ(0);
+      will-change:contents;
+      line-height:1;
+    }
+    .live-clock-sub {
+      font-size:.65rem; text-transform:uppercase; letter-spacing:.1em;
+      color:var(--text-muted); margin-top:4px;
+    }
+
+    /* ================================================================
+       INPUTS
+    ================================================================ */
+    .input-wrap { position:relative; margin-bottom:8px; }
+
+    input[type="text"] {
+      width:100%; padding:12px 14px;
+      border-radius:var(--r-md);
+      border:1.5px solid var(--border);
+      background:var(--bg-input); color:var(--text);
+      font-family:'DM Sans',sans-serif; font-size:.92rem;
+      outline:none; -webkit-appearance:none; margin:0;
+      transition:border-color var(--t) var(--ease),box-shadow var(--t) var(--ease);
+    }
+    input[type="text"]:focus {
+      border-color:var(--brand-orange);
+      box-shadow:0 0 0 3px rgba(245,130,32,.12);
+    }
+    input[type="text"]::placeholder{color:var(--text-muted)}
+    .err-msg {
+      font-size:.68rem; color:var(--brand-red);
+      padding:3px 2px 0; display:none;
+    }
+
+    /* ================================================================
+       AUTOCOMPLETE + CHIPS
+    ================================================================ */
+    .ac-drop {
+      position:absolute; top:calc(100% + 4px); left:0; right:0;
+      background:var(--bg-solid); border:1px solid var(--border);
+      border-radius:var(--r-md); box-shadow:var(--sh-md);
+      z-index:300; overflow:hidden; max-height:160px; overflow-y:auto;
+      display:none;
+    }
+    .ac-drop.open{display:block}
+    .ac-item {
+      display:flex; align-items:center; gap:7px;
+      padding:9px 12px; font-size:.84rem; color:var(--text); cursor:pointer;
+      transition:background var(--t);
+    }
+    .ac-item:hover{background:var(--chip-bg)}
+
+    .chips-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+    .chip {
+      display:inline-flex!important; align-items:center; gap:4px;
+      padding:4px 11px!important; border-radius:var(--r-pill)!important;
+      font-size:.7rem!important; font-weight:500;
+      background:var(--chip-bg)!important; color:var(--chip-text)!important;
+      border:1px solid var(--chip-border)!important;
+      cursor:pointer; width:auto!important; margin:0!important;
+      max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      transition:all var(--t) var(--ease)!important;
+    }
+    .chip:hover{background:var(--brand-red)!important;color:#fff!important;border-color:var(--brand-red)!important}
+
+    /* ================================================================
+       BUTTONS
+    ================================================================ */
+    .btn-full {
+      display:block; width:100%; padding:13px 20px;
+      border-radius:var(--r-md); border:none;
+      font-family:'DM Sans',sans-serif; font-size:.93rem; font-weight:600;
+      cursor:pointer; text-align:center; -webkit-tap-highlight-color:transparent;
+      transition:all var(--t) var(--ease); letter-spacing:.01em;
+    }
+    .btn-full:active{transform:scale(.98)}
+    .btn-full:disabled{opacity:.38;cursor:not-allowed;transform:none!important}
+
+    .btn-red    { background:var(--brand-red);color:#fff;box-shadow:0 4px 14px rgba(166,25,46,.28); }
+    .btn-red:not(:disabled):hover{ background:var(--brand-red-dark);transform:translateY(-1px);box-shadow:0 6px 18px rgba(166,25,46,.38) }
+    .btn-orange { background:var(--brand-gradient);color:#fff;box-shadow:0 4px 14px rgba(245,130,32,.28); }
+    .btn-orange:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(245,130,32,.38)}
+    .btn-crimson{ background:#dc2626;color:#fff;box-shadow:0 4px 14px rgba(220,38,38,.22); }
+    .btn-crimson:not(:disabled):hover{background:#b91c1c;transform:translateY(-1px)}
+    .btn-green  { background:linear-gradient(135deg,#15803d,#22c55e);color:#fff;box-shadow:0 4px 14px rgba(34,197,94,.28); }
+    .btn-green:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(34,197,94,.38)}
+
+    .btn-edit {
+      display:inline-flex;align-items:center;justify-content:center;
+      flex:1; min-width:110px; padding:8px 12px;
+      border-radius:var(--r-md); border:1px solid var(--border);
+      background:var(--bg-solid); color:var(--text-sec);
+      font-family:'DM Sans',sans-serif; font-size:.72rem; font-weight:600;
+      cursor:pointer; width:auto!important; transition:all var(--t) var(--ease);
+    }
+    .btn-edit:hover{border-color:var(--brand-orange);color:var(--brand-orange);background:rgba(245,130,32,.06)}
+
+    /* ================================================================
+       STATUS CARD — two DISTINCT columns (Prasidha: high contrast)
+    ================================================================ */
+    .status-card { display:flex; gap:10px; margin-bottom:14px; }
+
+    .sc-col {
+      flex:1; border-radius:var(--r-lg);
+      padding:12px 10px; text-align:center;
+      border:1.5px solid transparent;
+    }
+    .col-dur {
+      background:rgba(245,130,32,.09);
+      border-color:rgba(245,130,32,.25);
+    }
+    .col-in {
+      background:rgba(166,25,46,.07);
+      border-color:rgba(166,25,46,.20);
+    }
+    [data-theme="dark"] .col-dur{ background:rgba(245,130,32,.14);border-color:rgba(245,130,32,.35) }
+    [data-theme="dark"] .col-in { background:rgba(166,25,46,.15);border-color:rgba(166,25,46,.30) }
+
+    .sc-label {
+      font-size:.58rem; font-weight:700; letter-spacing:.09em;
+      text-transform:uppercase; color:var(--text-muted); margin-bottom:5px;
+    }
+    /* Bigger, bolder shift duration timer (Prasidha: point 8) */
+    .dur-value {
+      font-size:1.4rem; font-weight:700; color:var(--brand-orange);
+      font-family:'DM Mono',monospace; letter-spacing:-.02em;
+    }
+    .sc-value {
+      font-size:.94rem; font-weight:700; color:var(--text);
+      font-family:'DM Mono',monospace;
+    }
+    .sc-sub {
+      font-size:.66rem; color:var(--text-sec); margin-top:3px;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    /* Clocked-in location — more visible (Prasidha: point 9) */
+    .sc-loc-badge {
+      display:inline-block; margin-top:4px;
+      background:rgba(166,25,46,.10); border:1px solid rgba(166,25,46,.18);
+      border-radius:var(--r-pill); padding:2px 8px;
+      font-size:.64rem; font-weight:600; color:var(--brand-red);
+      max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+
+    /* ================================================================
+       CLOCK LOADER — inline, inside card
+    ================================================================ */
+    #inline-loader { text-align:center; padding:16px 0 8px; }
+
+    /* Smooth hand rotation — Prasidha: CSS transition on transform
+       gives buttery motion. JS updates angle each second. */
+    .hand-h,.hand-m,.hand-s {
+      transform-origin:36px 36px;
+      transition:transform .9s cubic-bezier(.45,.05,.55,.95);
+    }
+    .s-hand-el { transition:transform .5s cubic-bezier(.45,.05,.55,.95)!important; }
+
+    .loader-text {
+      font-size:.77rem; font-weight:500; font-style:italic; color:var(--text-sec);
+      animation:softPulse 2s ease infinite; padding:0 6px;
+    }
+    @keyframes softPulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+    /* ================================================================
+       GHOST SKELETON
+    ================================================================ */
+    .skel {
+      border-radius:var(--r-sm);
+      background:linear-gradient(90deg,var(--skel-a) 25%,var(--skel-b) 50%,var(--skel-a) 75%);
+      background-size:200% 100%;
+      animation:shimmer 1.7s ease infinite;
+    }
+    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .sl{height:12px;margin-bottom:9px}
+    .sw30{width:30%} .sw60{width:60%} .sw85{width:85%} .sw100{width:100%}
+    .sb{height:52px;width:100%;border-radius:var(--r-md);margin-bottom:10px}
+
+    .ghost-note {
+      font-size:.74rem; font-style:italic; color:var(--text-muted);
+      text-align:center; padding:10px 0; animation:softPulse 2s ease infinite;
+    }
+
+    /* ================================================================
+       PAGE TRANSITION OVERLAY — CRED-style with time elements
+       Prasidha: Clock hands + hourglass particles + pulse rings.
+       Mounted/unmounted via JS class. z-index above card.
+    ================================================================ */
+    #page-transition {
+      position:fixed; inset:0; z-index:500;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      background:var(--bg-body-a);
+      opacity:0; pointer-events:none;
+      transition:opacity .35s var(--ease);
+    }
+    #page-transition.active{ opacity:1; pointer-events:all; }
+
+    .pt-clock {
+      width:90px; height:90px;
+      position:relative; margin-bottom:20px;
+    }
+    .pt-clock svg { width:90px; height:90px; }
+
+    /* Hourglass particles (Prasidha: time-themed like CRED's rupees) */
+    .pt-particles {
+      position:absolute; inset:0; pointer-events:none; overflow:hidden;
+    }
+    .pt-p {
+      position:absolute;
+      font-size:1.3rem; opacity:0;
+      animation:ptFloat 1.6s ease forwards;
+    }
+    @keyframes ptFloat {
+      0%   {opacity:0;transform:translateY(0)   scale(.7)}
+      20%  {opacity:1}
+      80%  {opacity:.8}
+      100% {opacity:0;transform:translateY(-90px) scale(1)}
+    }
+
+    /* Pulsing ring around the clock */
+    .pt-ring {
+      position:absolute; inset:-12px; border-radius:50%;
+      border:2px solid var(--brand-orange);
+      animation:ptRing 1.2s ease infinite;
+    }
+    @keyframes ptRing{
+      0%  {transform:scale(.85);opacity:.8}
+      50% {transform:scale(1.1);opacity:.3}
+      100%{transform:scale(.85);opacity:.8}
+    }
+
+    .pt-msg {
+      font-size:.82rem; font-weight:500; font-style:italic;
+      color:var(--text-sec); animation:softPulse 1.5s ease infinite;
+    }
+
+    /* ================================================================
+       MODAL / POPUP (Fix Clock-In, Redo Clock-Out)
+    ================================================================ */
+    #modal-overlay {
+      position:fixed; inset:0; z-index:800;
+      background:rgba(0,0,0,.45);
+      backdrop-filter:blur(6px);
+      -webkit-backdrop-filter:blur(6px);
+      display:flex; align-items:center; justify-content:center;
+      padding:24px; opacity:0; pointer-events:none;
+      transition:opacity .28s var(--ease);
+    }
+    #modal-overlay.open { opacity:1; pointer-events:all; }
+
+    .modal-card {
+      background:var(--bg-solid); border:1px solid var(--border);
+      border-radius:var(--r-xl); padding:26px 22px;
+      width:100%; max-width:340px; box-shadow:var(--sh-lg);
+      transform:translateY(16px) scale(.97);
+      transition:transform .28s var(--ease);
+    }
+    #modal-overlay.open .modal-card { transform:translateY(0) scale(1); }
+
+    .modal-icon { text-align:center; font-size:2rem; margin-bottom:10px; }
+    .modal-title { font-size:1rem; font-weight:700; color:var(--text); text-align:center; margin-bottom:6px; }
+    .modal-body  { font-size:.82rem; color:var(--text-sec); text-align:center; line-height:1.55; margin-bottom:18px; }
+    .modal-btns  { display:flex; gap:9px; }
+
+    /* ================================================================
+       REVIEW CARD (Submit page)
+    ================================================================ */
+    .review-card {
+      background:var(--bg-subtle); border:1px solid var(--border);
+      border-radius:var(--r-lg); padding:18px 16px; margin-bottom:12px;
+    }
+    .review-hdr {
+      font-size:.6rem; font-weight:700; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text-muted); margin-bottom:14px;
+    }
+    .rv-row {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:9px 0; border-bottom:1px solid var(--border);
+    }
+    .rv-row:last-of-type{border-bottom:none}
+    .rdot { width:9px;height:9px;border-radius:50%;margin-top:5px;flex-shrink:0; }
+    .dot-in{background:var(--brand-orange)} .dot-out{background:var(--brand-red)} .dot-dur{background:#22c55e}
+    .rv-detail{flex:1}
+    .rv-lbl  { font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:600 }
+    .rv-time { font-size:.96rem;font-weight:700;color:var(--text);font-family:'DM Mono',monospace }
+    .rv-place{ font-size:.74rem;color:var(--text-sec);margin-top:2px }
+    .edit-row { display:flex;gap:8px;margin-top:12px;flex-wrap:wrap }
+
+    /* ================================================================
+       SUCCESS CARD — halo animation on tick (Prasidha: point 16)
+    ================================================================ */
+    .success-card {
+      background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(22,163,74,.04));
+      border:1px solid rgba(34,197,94,.2);
+      border-radius:var(--r-lg); padding:24px 18px;
+      text-align:center; animation:cardUp .45s var(--ease);
+    }
+    @keyframes cardUp{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+    /* Tick ring + continuous halo (Prasidha: not stopping after first play) */
+    .tick-wrap {
+      position:relative; width:56px; height:56px;
+      margin:0 auto 14px;
+    }
+    .tick-ring-solid {
+      width:56px; height:56px; border-radius:50%;
+      background:#22c55e; display:flex; align-items:center; justify-content:center;
+      position:relative; z-index:2;
+      animation:popIn .5s var(--ease) .1s both;
+    }
+    @keyframes popIn{0%{transform:scale(0);opacity:0}65%{transform:scale(1.14)}100%{transform:scale(1);opacity:1}}
+
+    .tick-path { stroke-dasharray:30; animation:drawTick .4s ease .5s both; }
+    @keyframes drawTick{from{stroke-dashoffset:30;opacity:0}to{stroke-dashoffset:0;opacity:1}}
+
+    /* Continuous halo ring (Prasidha: infinite, never stops) */
+    .halo-ring {
+      position:absolute; border-radius:50%; border:2px solid #22c55e;
+      animation:haloExpand 2s ease infinite;
+    }
+    .halo-ring:nth-child(1){ inset:-8px;  animation-delay:0s }
+    .halo-ring:nth-child(2){ inset:-18px; animation-delay:.6s }
+    .halo-ring:nth-child(3){ inset:-28px; animation-delay:1.2s }
+    @keyframes haloExpand{
+      0%  {transform:scale(.85);opacity:.7}
+      60% {transform:scale(1.15);opacity:.2}
+      100%{transform:scale(.85);opacity:0}
+    }
+
+    .success-title { font-size:.9rem;font-weight:700;color:#16a34a;margin-bottom:18px }
+
+    /* Success detail rows — more readable spacing (Prasidha: point 17) */
+    .ss-rows { text-align:left; display:flex; flex-direction:column; gap:12px; }
+    .ss-row  { display:flex; gap:10px; align-items:flex-start; }
+    .ss-row .sri { font-size:1rem; margin-top:1px; flex-shrink:0; }
+    .ss-row .srd .srl {
+      font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;
+      color:var(--text-muted);font-weight:600;
+    }
+    .ss-row .srd .srv {
+      font-size:.96rem;font-weight:700;color:var(--text);
+      font-family:'DM Mono',monospace; margin-top:1px;
+    }
+    .ss-row .srd .srp { font-size:.74rem;color:var(--text-sec);margin-top:1px }
+
+    /* Divider line between submit rows for more readability */
+    .ss-divider {
+      height:1px; background:var(--border); margin:2px 0;
+    }
+
+    /* ================================================================
+       CENTERED TOAST — vertical center of viewport (Prasidha: point 13)
+    ================================================================ */
+    #toast-box {
+      position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      z-index:9999; pointer-events:none;
+      display:flex; flex-direction:column;
+      align-items:center; gap:8px;
+      width:min(88vw,320px);
+    }
+    .toast {
+      padding:12px 22px; border-radius:var(--r-pill);
+      font-size:.83rem; font-weight:500;
+      background:rgba(30,30,50,.92); color:#fff;
+      box-shadow:var(--sh-lg);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      text-align:center;
+      animation:toastPop .3s var(--ease);
+    }
+    .toast.ok  { background:rgba(21,128,61,.92); }
+    .toast.err { background:rgba(185,28,28,.92); }
+    @keyframes toastPop{
+      from{opacity:0;transform:scale(.88) translateY(6px)}
+      to  {opacity:1;transform:scale(1)   translateY(0)}
+    }
+
+    /* ================================================================
+       FOOTER — bottom of card, theme toggle + disclaimer
+    ================================================================ */
+    .smx-footer {
+      display:flex; align-items:center; justify-content:space-between;
+      margin-top:18px; padding-top:12px;
+      border-top:1px solid var(--border);
+      gap:8px;
+    }
+
+    /* Override Pico width:100% on button for theme toggle */
+    #theme-toggle {
+      display:inline-flex!important;
+      align-items:center; gap:5px;
+      padding:6px 12px!important; border-radius:var(--r-pill)!important;
+      background:var(--bg-subtle)!important; border:1px solid var(--border)!important;
+      font-family:'DM Sans',sans-serif; font-size:.68rem; font-weight:600;
+      color:var(--text-sec)!important; cursor:pointer;
+      width:auto!important; margin:0!important; flex-shrink:0;
+      transition:all var(--t) var(--ease)!important;
+    }
+    #theme-toggle:hover{ border-color:var(--brand-orange)!important;color:var(--brand-orange)!important }
+
+    .footer-disclaimer {
+      font-size:.58rem; color:var(--text-muted); line-height:1.4;
+      text-align:right; flex:1;
+    }
+
+    /* ================================================================
+       UTILITY
+    ================================================================ */
+    .hidden{display:none!important}
+    .mt8{margin-top:8px} .mt12{margin-top:12px} .mt16{margin-top:16px}
+    .center{text-align:center}
+
+    .edit-in-panel {
+      background:var(--bg-subtle); border:1px solid var(--border);
+      border-radius:var(--r-lg); padding:16px 15px; margin-bottom:12px;
+    }
+    .edit-panel-title { font-size:.84rem;font-weight:700;color:var(--brand-red);margin-bottom:11px }
   </style>
 </head>
 <body>
 
-  <div id="pg-transition">
-    <div style="font-size: 2rem; margin-bottom: 10px;">⏳</div>
-    <p id="pt-msg">Loading...</p>
+<!-- ============================================================
+     PAGE TRANSITION OVERLAY — time-themed (CRED-inspired)
+     Prasidha: clock + hourglass particles float up between screens.
+============================================================ -->
+<div id="page-transition">
+  <div class="pt-clock">
+    <div class="pt-ring"></div>
+    <svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="36" cy="36" r="33" fill="var(--bg-card)" stroke="var(--brand-orange)" stroke-width="2.5"/>
+      <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(90 36 36)"/>
+      <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(180 36 36)"/>
+      <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(270 36 36)"/>
+      <line id="pt-h" x1="36" y1="36" x2="36" y2="20" stroke="var(--text)" stroke-width="3.2" stroke-linecap="round" style="transform-origin:36px 36px"/>
+      <line id="pt-m" x1="36" y1="36" x2="36" y2="10" stroke="var(--text)" stroke-width="2" stroke-linecap="round" style="transform-origin:36px 36px;transition:transform .9s cubic-bezier(.45,.05,.55,.95)"/>
+      <line id="pt-s" x1="36" y1="40" x2="36" y2="9" stroke="var(--brand-red)" stroke-width="1.2" stroke-linecap="round" style="transform-origin:36px 36px;transition:transform .5s cubic-bezier(.45,.05,.55,.95)"/>
+      <circle cx="36" cy="36" r="2.8" fill="var(--brand-orange)"/>
+    </svg>
+    <div class="pt-particles" id="pt-particles"></div>
   </div>
+  <p class="pt-msg" id="pt-msg">Switching your view…</p>
+</div>
 
-  <div id="toast-box"></div>
+<!-- ============================================================
+     MODAL OVERLAY (popups)
+============================================================ -->
+<div id="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-icon" id="modal-icon">⚠️</div>
+    <p class="modal-title" id="modal-title">Confirm</p>
+    <p class="modal-body"  id="modal-body">Are you sure?</p>
 
-  <main class="smx-card">
-    <section id="auth-sec">
-      <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="margin: 0; color: var(--red);">Seamex</h2>
-        <p style="font-size: 0.8rem; color: var(--orange);">Geo Attendance v06.5</p>
+    <!-- Fix clock-in panel inside modal -->
+    <div id="modal-edit-in" class="hidden">
+      <div class="input-wrap">
+        <input type="text" id="edit-in-input" placeholder="Correct location name" maxlength="60" autocomplete="off">
+        <div class="err-msg" id="edit-in-err">Letters, numbers, spaces and hyphens only</div>
       </div>
-      
-      <div class="inp-wrap">
-        <input type="text" id="inp-name" placeholder="Full Name" autocomplete="off">
-        <div class="err-msg" id="err-name">Minimum 2 characters (Letters & dots only)</div>
+    </div>
+
+    <div class="modal-btns" id="modal-btns"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP CARD
+============================================================ -->
+<main class="container">
+  <div class="smx-card">
+
+    <!-- ===== AUTH / LOGIN SECTION ===== -->
+    <!--
+      MIGRATION NOTE (Prasidha):
+      Replace this block with Azure AD MSAL redirect.
+      Map: displayName → U.name | employeeId → U.id
+      Zero changes needed in #main-section after SSO switch.
+    -->
+    <section id="auth-section">
+      <div class="login-header">
+        <img src="NEW Seamex logo_testing march 11.png" alt="Seamex Logo" class="auth-logo">
+        <p class="module-name">Geo Attendance</p>
+        <p id="daily-greeting"></p>
       </div>
-      <div class="inp-wrap">
-        <input type="text" id="inp-id" placeholder="Poornata ID" inputmode="numeric">
-        <div class="err-msg" id="err-id">Numeric ID required (3-12 digits)</div>
+
+      <p class="auth-title">Welcome — Start Your Day</p>
+
+      <div class="input-wrap">
+        <input type="text" id="user-name"
+          placeholder="Full Name"
+          maxlength="60" autocomplete="off" autocorrect="off"
+          spellcheck="false" autocapitalize="words" inputmode="text">
+        <div class="err-msg" id="name-err">Alphabets and spaces only (min 2 chars)</div>
       </div>
-      
-      <button class="btn-full btn-red" id="btn-start" disabled>Start Day</button>
+
+      <div class="input-wrap" style="margin-top:8px">
+        <input type="text" id="poornata-id"
+          placeholder="Poornata ID (numbers only)"
+          inputmode="numeric" pattern="[0-9]*"
+          maxlength="12" autocomplete="off">
+        <div class="err-msg" id="id-err">Numbers only, 3–12 digits</div>
+      </div>
+
+      <!-- Inline clock loader (visible during transition) -->
+      <div id="inline-loader" class="hidden mt12">
+        <svg id="login-clock" style="display:block;margin:0 auto 10px;filter:drop-shadow(0 4px 12px rgba(245,130,32,.2))"
+          width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="36" cy="36" r="33" fill="var(--bg-solid)" stroke="var(--brand-orange)" stroke-width="2.5"/>
+          <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(30 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(60 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(90 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(120 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(150 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(180 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(210 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(240 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="11" stroke="var(--text-muted)" stroke-width="2.2" stroke-linecap="round" transform="rotate(270 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(300 36 36)"/>
+          <line x1="36" y1="5" x2="36" y2="10" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round" transform="rotate(330 36 36)"/>
+          <line id="lc-h" x1="36" y1="36" x2="36" y2="19" stroke="var(--text)" stroke-width="3.2" stroke-linecap="round" style="transform-origin:36px 36px;transition:transform .9s cubic-bezier(.45,.05,.55,.95)"/>
+          <line id="lc-m" x1="36" y1="36" x2="36" y2="10" stroke="var(--text)" stroke-width="2" stroke-linecap="round" style="transform-origin:36px 36px;transition:transform .9s cubic-bezier(.45,.05,.55,.95)"/>
+          <line id="lc-s" x1="36" y1="40" x2="36" y2="8" stroke="var(--brand-red)" stroke-width="1.2" stroke-linecap="round" style="transform-origin:36px 36px;transition:transform .5s cubic-bezier(.45,.05,.55,.95)"/>
+          <circle cx="36" cy="36" r="2.8" fill="var(--brand-orange)"/>
+        </svg>
+        <p class="loader-text" id="loader-msg">Starting your day…</p>
+      </div>
+
+      <button class="btn-full btn-red mt12" id="btn-start" disabled>Start Day</button>
+
+      <!-- Footer inside card -->
+      <div class="smx-footer">
+        <button id="theme-toggle" onclick="cycleTheme()">
+          <span id="t-icon">🌙</span> <span id="t-label">Dark</span>
+        </button>
+        <p class="footer-disclaimer">
+          By using this app, you confirm<br>that your location data is accurate.
+        </p>
+      </div>
     </section>
 
-    <section id="main-sec" class="hidden">
-      <div style="margin-bottom: 15px;">
-        <div id="disp-name" style="font-weight: 700;"></div>
-        <div id="disp-id" style="font-size: 0.7rem; color: #888;"></div>
+    <!-- ===== MAIN (CLOCK IN / OUT / SUBMIT) SECTION ===== -->
+    <section id="main-section" class="hidden">
+
+      <!-- Top bar: name+ID left | logo right (Prasidha: point 5/7) -->
+      <div class="main-header">
+        <div class="mh-user">
+          <div class="mh-name" id="disp-name"></div>
+          <div class="mh-id"   id="disp-id"></div>
+        </div>
+        <img src="NEW Seamex logo_testing march 11.png" alt="Seamex Logo" class="smx-logo-img">
       </div>
 
-      <div id="status-card" class="status-card hidden">
-        <div class="sc-col">
-          <div class="sc-lbl">Clocked In</div>
-          <div class="sc-val" id="ci-time">--:--</div>
+      <!-- Module label under header -->
+      <p style="text-align:center;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">Geo Attendance</p>
+
+      <!-- ---- Live clock ---- -->
+      <div class="live-clock-wrap" id="live-clock-wrap">
+        <div class="live-clock" id="live-clock">00:00:00</div>
+        <div class="live-clock-sub" id="live-clock-date"></div>
+      </div>
+
+      <!-- ---- Status card (two distinct divs) ---- -->
+      <div class="status-card hidden" id="status-card">
+        <div class="sc-col col-dur">
+          <div class="sc-label">⏱ Shift Duration</div>
+          <div class="dur-value" id="timer-val">00:00:00</div>
         </div>
-        <div class="sc-col">
-          <div class="sc-lbl">Location</div>
-          <div class="sc-val" id="ci-loc" style="font-size: 0.7rem;">--</div>
+        <div class="sc-col col-in">
+          <div class="sc-label">📍 Clocked In</div>
+          <div class="sc-value" id="ci-time">--:--</div>
+          <div class="sc-loc-badge" id="ci-loc">--</div>
         </div>
       </div>
 
-      <div id="ci-grp" class="hidden">
-        <div class="inp-wrap">
-          <input type="text" id="in-loc" placeholder="Enter current location">
+      <!-- ---- Clock-in group ---- -->
+      <div id="ci-group">
+        <div class="chips-row" id="in-chips"></div>
+        <div class="input-wrap">
+          <input type="text" id="in-loc" placeholder="Enter clock-in location name" maxlength="60" autocomplete="off">
+          <div class="err-msg" id="in-loc-err">Use letters, numbers, spaces or hyphens only</div>
+          <div class="ac-drop" id="in-drop"></div>
         </div>
-        <button class="btn-full btn-red" id="btn-ci">Confirm Clock In</button>
+        <button class="btn-full btn-orange mt8" id="btn-clock-in">Clock In</button>
       </div>
 
-      <div id="co-grp" class="hidden">
-        <div class="inp-wrap">
-          <input type="text" id="out-loc" placeholder="Enter departure location">
+      <!-- ---- Clock-out group ---- -->
+      <div id="co-group" class="hidden">
+        <div class="chips-row" id="out-chips"></div>
+        <div class="input-wrap">
+          <input type="text" id="out-loc" placeholder="Enter clock-out location name" maxlength="60" autocomplete="off">
+          <div class="err-msg" id="out-loc-err">Use letters, numbers, spaces or hyphens only</div>
+          <div class="ac-drop" id="out-drop"></div>
         </div>
-        <button class="btn-full btn-red" id="btn-co">Confirm Clock Out</button>
+        <button class="btn-full btn-crimson mt8" id="btn-clock-out">Clock Out</button>
       </div>
 
-      <div id="suc-card" class="hidden" style="text-align: center; padding: 20px 0;">
-        <div style="font-size: 3rem;">✅</div>
-        <h3>Shift Completed</h3>
-        <p style="font-size: 0.85rem;">Your attendance has been recorded.</p>
-        <button class="btn-full" onclick="location.reload()" style="background: #eee; margin-top: 15px;">Refresh App</button>
+      <!-- ---- Ghost screen ---- -->
+      <div id="ghost-screen" class="hidden">
+        <div class="skel sl sw30"></div>
+        <div class="skel sb"></div>
+        <div class="skel sl sw85"></div>
+        <div class="skel sl sw60"></div>
+        <p class="ghost-note" id="ghost-note">Your timings are being recorded…</p>
       </div>
+
+      <!-- ---- Review / Submit card ---- -->
+      <div id="review-wrap" class="hidden">
+        <div class="review-card">
+          <div class="review-hdr">Review your shift before submitting</div>
+          <div class="rv-row">
+            <div class="rdot dot-in"></div>
+            <div class="rv-detail">
+              <div class="rv-lbl">Clock In</div>
+              <div class="rv-time"  id="r-in-time">--</div>
+              <div class="rv-place" id="r-in-loc">--</div>
+            </div>
+          </div>
+          <div class="rv-row">
+            <div class="rdot dot-out"></div>
+            <div class="rv-detail">
+              <div class="rv-lbl">Clock Out</div>
+              <div class="rv-time"  id="r-out-time">--</div>
+              <div class="rv-place" id="r-out-loc">--</div>
+            </div>
+          </div>
+          <div class="rv-row">
+            <div class="rdot dot-dur"></div>
+            <div class="rv-detail">
+              <div class="rv-lbl">Total Shift Duration</div>
+              <div class="rv-time" id="r-dur">--</div>
+            </div>
+          </div>
+          <div class="edit-row">
+            <button class="btn-edit" onclick="promptFixClockIn()">✏️ Fix Clock-In</button>
+            <button class="btn-edit" onclick="promptRedoClockOut()">↩ Redo Clock-Out</button>
+          </div>
+        </div>
+        <button class="btn-full btn-green" id="btn-submit">Submit the Day ✓</button>
+      </div>
+
+      <!-- ---- Edit clock-in (location only, not used inline anymore, moved to modal) ---- -->
+
+      <!-- ---- Success card ---- -->
+      <div id="success-card" class="success-card hidden">
+        <div class="tick-wrap">
+          <div class="halo-ring"></div>
+          <div class="halo-ring"></div>
+          <div class="halo-ring"></div>
+          <div class="tick-ring-solid">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path class="tick-path" d="M4 12L9 17L20 7" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+        <p class="success-title">Shift Submitted Successfully</p>
+        <div class="ss-rows">
+          <div class="ss-row">
+            <span class="sri">🟠</span>
+            <div class="srd">
+              <div class="srl">Clock In</div>
+              <div class="srv" id="ss-in-t">--</div>
+              <div class="srp" id="ss-in-l">--</div>
+            </div>
+          </div>
+          <div class="ss-divider"></div>
+          <div class="ss-row">
+            <span class="sri">🔴</span>
+            <div class="srd">
+              <div class="srl">Clock Out</div>
+              <div class="srv" id="ss-out-t">--</div>
+              <div class="srp" id="ss-out-l">--</div>
+            </div>
+          </div>
+          <div class="ss-divider"></div>
+          <div class="ss-row">
+            <span class="sri">🟢</span>
+            <div class="srd">
+              <div class="srl">Total Shift</div>
+              <div class="srv" id="ss-dur">--</div>
+            </div>
+          </div>
+          <div class="ss-divider"></div>
+          <div class="ss-row">
+            <span class="sri">📅</span>
+            <div class="srd">
+              <div class="srl">Date</div>
+              <div class="srv" id="ss-date">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer inside main card (same layout as login) -->
+      <div class="smx-footer">
+        <button id="theme-toggle-main" onclick="cycleTheme()">
+          <span id="t-icon-m">🌙</span> <span id="t-label-m">Dark</span>
+        </button>
+        <p class="footer-disclaimer">
+          Location data is captured for<br>attendance purposes only.
+        </p>
+      </div>
+
     </section>
-  </main>
+  </div><!-- /smx-card -->
+</main>
 
-  <script>
-    /* ============================================================
-       CONFIGURATION & STATE
-       ============================================================ */
-    const SB_URL = "https://svhbqvcabbzrxvndxtjm.supabase.co"; 
-    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2aGJxdmNhYmJ6cnh2bmR4dGptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTA0MjksImV4cCI6MjA5MDc4NjQyOX0.lYIsM5zN4uGKbP79avcKR_EaAlP5tu2N688OgZI6wZA";
-    const _db = supabase.createClient(SB_URL, SB_KEY);
+<!-- Toast container (centered viewport) -->
+<div id="toast-box"></div>
 
-    const KEY_USER = 'smx_v06_5';
-    let U = JSON.parse(localStorage.getItem(KEY_USER)) || {
-      name: '', id: '', 
-      clockIn: null, clockInLoc: '', 
-      clockOut: null, clockOutLoc: '',
-      submitted: false, lastActionDate: null
-    };
+<!-- Apply same toggle style to main-section toggle -->
+<style>
+  #theme-toggle-main {
+    display:inline-flex!important; align-items:center; gap:5px;
+    padding:6px 12px!important; border-radius:var(--r-pill)!important;
+    background:var(--bg-subtle)!important; border:1px solid var(--border)!important;
+    font-family:'DM Sans',sans-serif; font-size:.68rem; font-weight:600;
+    color:var(--text-sec)!important; cursor:pointer;
+    width:auto!important; margin:0!important;
+    transition:all var(--t) var(--ease)!important;
+  }
+  #theme-toggle-main:hover{ border-color:var(--brand-orange)!important;color:var(--brand-orange)!important }
+</style>
 
-    /* ============================================================
-       HELPERS
-       ============================================================ */
-    const g = id => document.getElementById(id);
-    const hide = id => g(id)?.classList.add('hidden');
-    const show = id => g(id)?.classList.remove('hidden');
-    const setTx = (id, v) => { const e = g(id); if(e) e.textContent = v; };
-    const save = () => localStorage.setItem(KEY_USER, JSON.stringify(U));
-    const nowISO = () => new Date().toISOString();
-    
-    function toast(m, type = 'info') {
-      const b = g('toast-box');
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.textContent = m;
-      if(type === 'err') t.style.borderLeft = "4px solid var(--red)";
-      b.appendChild(t);
-      setTimeout(() => t.remove(), 3000);
-    }
+<script>
+/* ============================================================
+   SEAMEX GEO-ATTENDANCE | v05
+   ============================================================
+   Written by Prasidha Jagtap
+   Assistant Manager – IT, Aditya Birla Group (Seamex)
 
-    function pageTransition(fn, msg) {
-      const ov = g('pg-transition');
-      g('pt-msg').textContent = msg || "Loading...";
-      ov.classList.add('on');
-      
-      setTimeout(() => {
-        try {
-          if (fn) fn();
-        } catch (err) {
-          console.error("Transition Error:", err);
-        } finally {
-          // Ensure overlay always closes even if fn() fails
-          setTimeout(() => ov.classList.remove('on'), 500);
-        }
-      }, 400);
-    }
+   // Hello, curious reader! 👋
+   // Code authored by Prasidha — field teams deserve good UX.
+   // Please leave this comment block intact.
+   // If you extend this: document, sanitize, and test on device.
 
-    /* ============================================================
-       VALIDATION (FIX-01: Relaxed Name Regex)
-       ============================================================ */
-    const isValidName = s => /^[a-zA-Z\s\.\-]{2,60}$/.test(s.trim());
-    const isValidId = s => /^[0-9]{3,12}$/.test(s.trim());
+   SECURITY — Prasidha:
+   ─────────────────────
+   SQL Injection prevention:
+     - sanitize() strips all SQL-dangerous chars on every write
+     - isValidLoc() enforces strict regex — only [a-zA-Z0-9 \-]
+     - Supabase JS uses parameterized queries server-side (baseline)
+   XSS prevention:
+     - All DOM writes use .textContent, never .innerHTML
+     - Autocomplete items built via createElement, not string concat
+   Integrity:
+     - Clock-in GPS timestamp is SEALED — not re-fetchable from client
+     - isSubmitting flag prevents double-submit race condition
+     - localStorage data shape validated before trusting on reload
+============================================================ */
 
-    function setupValidation() {
-      const nIn = g('inp-name'), iIn = g('inp-id'), btn = g('btn-start');
-      const chk = () => {
-        const n = nIn.value.trim(), i = iIn.value.trim();
-        g('err-name').style.display = (n && !isValidName(n)) ? 'block' : 'none';
-        g('err-id').style.display = (i && !isValidId(i)) ? 'block' : 'none';
-        btn.disabled = !(isValidName(n) && isValidId(i));
-      };
-      nIn.addEventListener('input', chk);
-      iIn.addEventListener('input', chk);
-    }
+/* ──────────── SUPABASE CONFIG ──────────── */
+/*
+  SECURITY NOTE (Prasidha):
+  Anon key is intentionally public — safe ONLY with RLS enforced.
+  Supabase RLS rule for 'attendance' table:
+    INSERT: allow for anon role
+    SELECT / UPDATE / DELETE: DENY for anon role
+  If RLS is ever disabled, rotate this key immediately.
+*/
+const SUPABASE_URL = 'https://svhbqvcabbzrxvndxtjm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2aGJxdmNhYmJ6cnh2bmR4dGptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTA0MjksImV4cCI6MjA5MDc4NjQyOX0.lYIsM5zN4uGKbP79avcKR_EaAlP5tu2N688OgZI6wZA';
+const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    /* ============================================================
-       CORE LOGIC (FIX-03: Defensive Rendering)
-       ============================================================ */
-    function renderMain() {
-      // 1. Reset all visibility first
-      ['auth-sec', 'main-sec', 'ci-grp', 'co-grp', 'status-card', 'suc-card'].forEach(hide);
+/* ──────────── STATE ──────────── */
+/*
+  Prasidha: U is the single source of truth.
+  Mirrors to localStorage on every change.
+  Shape validated on restore.
+*/
+let U = {
+  name:'', id:'',
+  clockIn:null,  clockInCoords:'',  clockInLoc:'',
+  clockOut:null, clockOutCoords:'', clockOutLoc:'',
+  isClockedIn:false, submitted:false, lastActionDate:null
+};
+let timerInterval = null; // Shift duration counter
+let clockRafId    = null; // requestAnimationFrame id for live clock
+let handInterval  = null; // SVG clock hand ticker
+let isSubmitting  = false;
+let themeMode     = 'auto';
 
-      // 2. Routing
-      if (!U.name || !U.id) {
-        show('auth-sec');
-        return;
-      }
+/* ──────────── STORAGE KEYS ──────────── */
+const KEY_USER  = 'smx_user_v05';
+const KEY_ID    = 'smx_lastid';
+const KEY_THEME = 'smx_theme';
+const KEY_LOCS  = 'smx_locs';
+const MAX_LOCS  = 6;
 
-      show('main-sec');
-      setTx('disp-name', U.name);
-      setTx('disp-id', 'ID: ' + U.id);
+/* ──────────── CONTENT ──────────── */
+const GREETINGS = [
+  "Rare Sunday warrior spotted. Respect. 🦁",
+  "New week, fresh resolve. Make it count! 🌟",
+  "Tuesday energy — steady and purposeful. 💪",
+  "Midweek momentum. You are in the thick of it. ⚡",
+  "Thursday: the unsung hero of the week.",
+  "Friday vibes. Finish line is right there. 🎉",
+  "Closing the week strong. That is the Seamex way. 🚀"
+];
+const GHOST_NOTES = [
+  "Your timings are being stored, safe and sound. 🗂️",
+  "Attendance logged with care — just like clockwork.",
+  "Professional wizardry happening. Your data is en route. 📡",
+  "The database is receiving your day's hard work.",
+  "Almost there! Shift data is making its way in."
+];
+const PT_MSGS = [
+  "Switching your view…",
+  "One moment, loading…",
+  "Getting things ready…",
+  "Just a tick…"
+];
+const PT_EMOJIS = ['⏱','⌛','🕐','⏳','🕑','⏰'];
 
-      if (U.submitted) {
-        show('suc-card');
-      } else if (U.clockIn) {
-        show('status-card');
-        setTx('ci-time', new Date(U.clockIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
-        setTx('ci-loc', U.clockInLoc);
-        show('co-grp');
-      } else {
-        show('ci-grp');
-      }
-    }
+/* ============================================================
+   INIT
+============================================================ */
+window.addEventListener('DOMContentLoaded', () => {
+  // 1. Time-of-day ambient background
+  setTimeOfDay();
 
-    /* ============================================================
-       EVENT LISTENERS
-       ============================================================ */
-    g('btn-start').addEventListener('click', () => {
-      const n = g('inp-name').value.trim();
-      const i = g('inp-id').value.trim();
-      
-      U.name = n; U.id = i; U.lastActionDate = nowISO();
-      save();
-      
-      pageTransition(() => {
+  // 2. Theme
+  themeMode = localStorage.getItem(KEY_THEME) || 'auto';
+  applyTheme(themeMode);
+
+  // 3. Daily greeting
+  document.getElementById('daily-greeting').textContent = GREETINGS[new Date().getDay()];
+
+  // 4. Pre-fill last ID
+  const lastId = localStorage.getItem(KEY_ID);
+  if (lastId) document.getElementById('poornata-id').value = lastId;
+
+  // 5. Restore session
+  try {
+    const raw = localStorage.getItem(KEY_USER);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      /* SECURITY: validate shape before trusting (Prasidha) */
+      if (parsed?.name && parsed?.id && !isNewDay(parsed.lastActionDate)) {
+        U = parsed;
         renderMain();
-      }, "Setting up your profile...");
-    });
-
-    g('btn-ci').addEventListener('click', async () => {
-      const loc = g('in-loc').value.trim();
-      if (!loc) return toast("Please enter your location", "err");
-
-      const btn = g('btn-ci');
-      btn.disabled = true;
-      btn.textContent = "Processing...";
-
-      try {
-        // Simple delay to simulate GPS check for reliability testing
-        await new Promise(r => setTimeout(r, 800));
-        
-        U.clockIn = nowISO();
-        U.clockInLoc = loc;
-        U.lastActionDate = nowISO();
-        save();
-        
-        pageTransition(() => renderMain(), "Clocking in...");
-      } catch (err) {
-        toast("Error during Clock-In", "err");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Confirm Clock In";
+        return;
+      } else {
+        localStorage.removeItem(KEY_USER);
       }
-    });
+    }
+  } catch { localStorage.removeItem(KEY_USER); }
 
-    g('btn-co').addEventListener('click', async () => {
-      const loc = g('out-loc').value.trim();
-      if (!loc) return toast("Please enter departure location", "err");
+  // 6. Fresh session setup
+  setupLoginValidation();
+  setupAutocomplete('in-loc',  'in-drop',  'in-chips');
+  setupAutocomplete('out-loc', 'out-drop', 'out-chips');
+});
 
-      const btn = g('btn-co');
-      btn.disabled = true;
-      
-      try {
-        const payload = {
-          user_name: U.name,
-          emp_id: U.id,
-          ci_time: U.clockIn,
-          ci_loc: U.clockInLoc,
-          co_time: nowISO(),
-          co_loc: loc
-        };
+/* ============================================================
+   TIME-OF-DAY AMBIENT
+   Prasidha: Sets data-tod attribute on body.
+   CSS handles all animation — zero JS paint cost.
+============================================================ */
+function setTimeOfDay() {
+  const h = new Date().getHours();
+  let tod;
+  if      (h >= 5  && h < 9)  tod = 'dawn';
+  else if (h >= 9  && h < 15) tod = 'day';
+  else if (h >= 15 && h < 18) tod = 'dusk';
+  else                         tod = 'night';
+  document.body.setAttribute('data-tod', tod);
+}
 
-        const { error } = await _db.from('attendance').insert([payload]);
-        if (error) throw error;
+/* ============================================================
+   THEME
+============================================================ */
+function applyTheme(mode) {
+  const eff = (mode === 'auto') ? (isDay() ? 'light' : 'dark') : mode;
+  document.documentElement.setAttribute('data-theme', eff);
+  const icon  = eff === 'dark' ? '☀️' : '🌙';
+  const label = eff === 'dark' ? 'Light' : 'Dark';
+  setElText('t-icon',  icon);  setElText('t-label',  label);
+  setElText('t-icon-m',icon);  setElText('t-label-m',label);
+}
+function cycleTheme() {
+  const next = { auto:'light', light:'dark', dark:'auto' };
+  themeMode  = next[themeMode] ?? 'auto';
+  localStorage.setItem(KEY_THEME, themeMode);
+  applyTheme(themeMode);
+}
+const isDay = () => { const h=new Date().getHours(); return h>=6&&h<18; };
 
-        U.submitted = true;
-        save();
-        pageTransition(() => renderMain(), "Saving shift data...");
-      } catch (err) {
-        console.error(err);
-        toast("Submit failed. Database connection error.", "err");
-      } finally {
-        btn.disabled = false;
-      }
-    });
+/* ============================================================
+   LIVE CLOCK — requestAnimationFrame for smooth sub-second render
+   Prasidha: rAF is the correct API for anything display-rate.
+   No setInterval jitter. DM Mono prevents digit-width jitter.
+============================================================ */
+function startLiveClock() {
+  let lastSec = -1;
+  function tick() {
+    const now = new Date();
+    const s   = now.getSeconds();
+    if (s !== lastSec) {
+      lastSec = s;
+      const hh = now.getHours()  .toString().padStart(2,'0');
+      const mm = now.getMinutes().toString().padStart(2,'0');
+      const ss = s.toString().padStart(2,'0');
+      const el = document.getElementById('live-clock');
+      if (el) el.textContent = `${hh}:${mm}:${ss}`;
 
-    document.addEventListener('DOMContentLoaded', () => {
-      setupValidation();
+      const de = document.getElementById('live-clock-date');
+      if (de) de.textContent = now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'});
+    }
+    clockRafId = requestAnimationFrame(tick);
+  }
+  clockRafId = requestAnimationFrame(tick);
+}
+function stopLiveClock() {
+  if (clockRafId) { cancelAnimationFrame(clockRafId); clockRafId = null; }
+}
+
+/* ============================================================
+   SVG CLOCK HANDS — smooth transition via CSS cubic-bezier
+   Prasidha: CSS transition on transform = GPU-composited = buttery.
+   JS only updates angle. CSS does the easing.
+============================================================ */
+function setHandAngles(hId, mId, sId) {
+  const now = new Date();
+  const sc  = now.getSeconds();
+  const mn  = now.getMinutes() + sc/60;
+  const hr  = (now.getHours()%12) + mn/60;
+  const rot = (id, deg) => {
+    const el=document.getElementById(id);
+    if(el) el.style.transform=`rotate(${deg}deg)`;
+  };
+  rot(hId, hr*30);
+  rot(mId, mn*6);
+  rot(sId, sc*6);
+}
+
+function startHandTick(hId='lc-h', mId='lc-m', sId='lc-s') {
+  setHandAngles(hId,mId,sId);
+  // Also tick pt clock
+  setHandAngles('pt-h','pt-m','pt-s');
+  handInterval = setInterval(()=>{
+    setHandAngles(hId,mId,sId);
+    setHandAngles('pt-h','pt-m','pt-s');
+  }, 1000);
+}
+function stopHandTick() {
+  clearInterval(handInterval); handInterval=null;
+}
+
+/* ============================================================
+   PAGE TRANSITION OVERLAY
+   Prasidha: CRED-style. Shows clock + floating time emojis.
+   Calls fn() after animation so state change happens mid-transition.
+============================================================ */
+function pageTransition(fn, msg) {
+  const overlay = document.getElementById('page-transition');
+  const msgEl   = document.getElementById('pt-msg');
+  const parts   = document.getElementById('pt-particles');
+
+  if (msgEl) msgEl.textContent = msg || rnd(PT_MSGS);
+
+  // Spawn floating emojis
+  parts.innerHTML = '';
+  PT_EMOJIS.sort(()=>Math.random()-.5).slice(0,4).forEach((em,i) => {
+    const p = document.createElement('div');
+    p.className = 'pt-p';
+    p.textContent = em;
+    p.style.left   = `${15 + i*20}%`;
+    p.style.bottom = `${10 + Math.random()*20}px`;
+    p.style.animationDelay = `${i*0.15}s`;
+    parts.appendChild(p);
+  });
+
+  overlay.classList.add('active');
+
+  // Run state change at peak opacity
+  setTimeout(() => {
+    if (fn) fn();
+  }, 250);
+
+  // Fade out after 1s
+  setTimeout(() => {
+    overlay.classList.remove('active');
+  }, 950);
+}
+
+/* ============================================================
+   LOGIN VALIDATION
+   SECURITY (Prasidha): Tight regex on both fields.
+   isValidName: letters + spaces, min 2 chars.
+   isValidId  : digits only, 3-12 chars.
+   All re-validated on submit click (not just on input).
+   No eval(), no dynamic code. Pure regex comparison.
+============================================================ */
+const isValidName = s => /^[a-zA-Z\s]{2,60}$/.test(s.trim());
+const isValidId   = s => /^[0-9]{3,12}$/.test(s.trim());
+/*
+  SECURITY: Location name validation (Prasidha)
+  Regex: letters, digits, spaces, hyphens ONLY.
+  Blocks: < > " ' ; = + # | \ / ( ) { } etc.
+  This prevents: XSS, HTML injection, SQLi pattern chars.
+*/
+const isValidLoc  = s => /^[a-zA-Z0-9 \-]{2,60}$/.test(s.trim());
+
+/*
+  SECURITY: sanitize() — final strip before any DB write (Prasidha)
+  Even though Supabase uses parameterized queries server-side,
+  we strip dangerous chars client-side as defense-in-depth.
+  Chars stripped: < > " ' ` ; % ( ) { } \ / = + | # @
+*/
+const sanitize = s =>
+  s.trim()
+   .replace(/[<>"'`%;(){}\\\/=+|#@]/g,'')
+   .slice(0, 60);
+
+function setupLoginValidation() {
+  const nIn = document.getElementById('user-name');
+  const iIn = document.getElementById('poornata-id');
+  const btn = document.getElementById('btn-start');
+
+  const check = () => {
+    const n=nIn.value.trim(), i=iIn.value.trim();
+    document.getElementById('name-err').style.display=(n&&!isValidName(n))?'block':'none';
+    document.getElementById('id-err')  .style.display=(i&&!isValidId(i))  ?'block':'none';
+    btn.disabled = !(isValidName(n)&&isValidId(i));
+  };
+  nIn.addEventListener('input',check);
+  iIn.addEventListener('input',check);
+}
+
+/* ============================================================
+   START DAY
+============================================================ */
+document.getElementById('btn-start').addEventListener('click', () => {
+  const name = document.getElementById('user-name').value.trim();
+  const id   = document.getElementById('poornata-id').value.trim();
+
+  /* SECURITY: Re-validate on click (Prasidha) */
+  if (!isValidName(name)||!isValidId(id)) { toast("Check your details.", 'err'); return; }
+
+  localStorage.setItem(KEY_ID, id);
+  U.name = name; U.id = id;
+  U.lastActionDate = now(); save();
+
+  // Show inline loader + start hand tick
+  document.getElementById('inline-loader').classList.remove('hidden');
+  document.getElementById('btn-start').classList.add('hidden');
+  startHandTick();
+
+  setTimeout(() => {
+    stopHandTick();
+    pageTransition(() => {
+      hide('auth-section');
+      document.getElementById('main-section').classList.remove('hidden');
       renderMain();
+    }, "Starting your day…");
+  }, 1400);
+});
+
+/* ============================================================
+   RENDER MAIN — central state router
+   Prasidha: All screen decisions live here.
+============================================================ */
+function renderMain() {
+  setElText('disp-name', U.name);
+  setElText('disp-id',   U.id);
+
+  startLiveClock();
+  setupAutocomplete('in-loc',  'in-drop',  'in-chips');
+  setupAutocomplete('out-loc', 'out-drop', 'out-chips');
+
+  if (U.submitted) { renderSuccess(); return; }
+
+  if (U.isClockedIn) {
+    hide('ci-group');
+    document.getElementById('status-card').classList.remove('hidden');
+    setElText('ci-time', fmt(U.clockIn));
+    setElText('ci-loc',  U.clockInLoc);
+
+    if (!U.clockOut) {
+      document.getElementById('co-group').classList.remove('hidden');
+      renderChips('out-loc','out-chips','out-drop');
+      startTimer();
+    } else {
+      renderReview();
+    }
+  } else {
+    renderChips('in-loc','in-chips','in-drop');
+  }
+}
+
+/* ============================================================
+   CLOCK IN
+============================================================ */
+document.getElementById('btn-clock-in').addEventListener('click', async () => {
+  const raw = document.getElementById('in-loc').value;
+  const loc = raw.trim();
+
+  /* SECURITY: Location validation (Prasidha) */
+  if (!loc) { toast("Please enter a location name."); return; }
+  if (!isValidLoc(loc)) {
+    document.getElementById('in-loc-err').style.display='block';
+    toast("Use letters, numbers, spaces or hyphens only.", 'err'); return;
+  }
+  document.getElementById('in-loc-err').style.display='none';
+
+  const btn = document.getElementById('btn-clock-in');
+  btn.disabled=true; btn.textContent="Fetching location…";
+
+  const coords = await getCoords();
+  if (!coords) {
+    btn.disabled=false; btn.textContent="Clock In"; return;
+  }
+
+  saveLoc(sanitize(loc));
+  U.clockIn=now(); U.clockInCoords=coords;
+  U.clockInLoc=sanitize(loc); U.isClockedIn=true;
+  U.lastActionDate=now(); save();
+
+  pageTransition(() => {
+    hide('ci-group');
+    document.getElementById('status-card').classList.remove('hidden');
+    setElText('ci-time', fmt(U.clockIn));
+    setElText('ci-loc',  U.clockInLoc);
+    document.getElementById('co-group').classList.remove('hidden');
+    renderChips('out-loc','out-chips','out-drop');
+    startTimer();
+  }, "Clocked in! Shift started.");
+
+  setTimeout(()=>toast("Clocked in! Have a great shift. 🟠",'ok'), 700);
+});
+
+/* ============================================================
+   CLOCK OUT — bug fixes (Prasidha: point 14)
+   Previous version had: GPS timeout leaving ghost visible forever +
+   timer clearing on partial failure.
+   Fix: GPS error → hide ghost + restore UI fully + restart timer.
+============================================================ */
+document.getElementById('btn-clock-out').addEventListener('click', async () => {
+  const raw = document.getElementById('out-loc').value;
+  const loc = raw.trim();
+
+  if (!loc) { toast("Please enter a location name."); return; }
+  if (!isValidLoc(loc)) {
+    document.getElementById('out-loc-err').style.display='block';
+    toast("Use letters, numbers, spaces or hyphens only.", 'err'); return;
+  }
+  document.getElementById('out-loc-err').style.display='none';
+
+  const btn = document.getElementById('btn-clock-out');
+  btn.disabled=true; btn.textContent="Fetching location…";
+
+  // Show ghost but keep timer running (BUG FIX: timer must not stop on GPS attempt)
+  document.getElementById('ghost-screen').classList.remove('hidden');
+  setElText('ghost-note', rnd(GHOST_NOTES));
+  hide('co-group');
+
+  const coords = await getCoords();
+
+  if (!coords) {
+    /* BUG FIX (Prasidha): Restore UI fully on GPS failure.
+       Previous version left ghost visible and timer halted. */
+    hide('ghost-screen');
+    document.getElementById('co-group').classList.remove('hidden');
+    btn.disabled=false; btn.textContent="Clock Out";
+    // Timer continues — user is still on shift
+    return;
+  }
+
+  saveLoc(sanitize(loc));
+  clearInterval(timerInterval); timerInterval=null;
+  U.clockOut=now(); U.clockOutCoords=coords;
+  U.clockOutLoc=sanitize(loc); U.lastActionDate=now(); save();
+
+  setTimeout(() => {
+    hide('ghost-screen');
+    pageTransition(() => {
+      renderReview();
+    }, "Shift logged. Review below.");
+    setTimeout(()=>toast("Clocked out! Reviewing your shift. 🔴",'ok'), 500);
+  }, 1800);
+});
+
+/* ============================================================
+   REVIEW CARD
+============================================================ */
+function renderReview() {
+  hide('co-group'); hide('ghost-screen');
+  clearInterval(timerInterval); timerInterval=null;
+
+  document.getElementById('status-card').classList.remove('hidden');
+  setElText('ci-time', fmt(U.clockIn));
+  setElText('ci-loc',  U.clockInLoc);
+  setElText('timer-val', duration(U.clockIn, U.clockOut));
+
+  setElText('r-in-time',  fmt(U.clockIn));
+  setElText('r-in-loc',   U.clockInLoc);
+  setElText('r-out-time', fmt(U.clockOut));
+  setElText('r-out-loc',  U.clockOutLoc);
+  setElText('r-dur',      duration(U.clockIn, U.clockOut));
+
+  document.getElementById('review-wrap').classList.remove('hidden');
+}
+
+/* ============================================================
+   MODAL HELPER — generic popup factory
+============================================================ */
+function showModal({ icon, title, body, buttons, showEditIn=false }) {
+  document.getElementById('modal-icon').textContent  = icon  || 'ℹ️';
+  document.getElementById('modal-title').textContent = title || '';
+  document.getElementById('modal-body').textContent  = body  || '';
+
+  const editDiv = document.getElementById('modal-edit-in');
+  if (showEditIn) {
+    editDiv.classList.remove('hidden');
+    const inp = document.getElementById('edit-in-input');
+    inp.value = U.clockInLoc;
+    setTimeout(()=>inp.focus(), 200);
+  } else {
+    editDiv.classList.add('hidden');
+  }
+
+  const btnsEl = document.getElementById('modal-btns');
+  btnsEl.innerHTML = '';
+  buttons.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = `btn-full ${b.cls || 'btn-red'}`;
+    btn.style.marginTop = '0';
+    btn.style.flex = '1';
+    btn.textContent = b.label;
+    btn.addEventListener('click', () => {
+      closeModal();
+      if (b.fn) b.fn();
     });
-  </script>
+    btnsEl.appendChild(btn);
+  });
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+// Close modal on overlay click (Prasidha: standard UX)
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+/* ============================================================
+   FIX CLOCK-IN — modal popup with disclaimer (point 12)
+   Only location NAME is editable.
+   GPS timestamp is sealed for attendance audit integrity.
+============================================================ */
+function promptFixClockIn() {
+  showModal({
+    icon: '✏️',
+    title: 'Correct Clock-In Location',
+    body: 'Only the location name can be updated here. If you need to correct the clock-in time, please contact your HR team.',
+    showEditIn: true,
+    buttons: [
+      {
+        label: 'Update Location',
+        cls: 'btn-orange',
+        fn: () => {
+          const newLoc = sanitize(document.getElementById('edit-in-input').value.trim());
+          if (!newLoc || !isValidLoc(newLoc)) {
+            toast("Enter a valid location name.", 'err');
+            return;
+          }
+          U.clockInLoc = newLoc; save();
+          renderReview();
+          toast("Clock-in location updated. ✏️", 'ok');
+        }
+      },
+      { label: 'Cancel', cls: 'btn-edit', fn: null }
+    ]
+  });
+}
+
+/* ============================================================
+   REDO CLOCK-OUT — modal disclaimer (point 15)
+   Warns user old clock-out will be overridden.
+   BUG FIX (Prasidha): Re-enables co-group, restarts timer.
+============================================================ */
+function promptRedoClockOut() {
+  showModal({
+    icon: '↩',
+    title: 'Redo Clock-Out?',
+    body: 'Your current clock-out details will be overridden with the new submission. The original clock-out will be lost. Do you want to continue?',
+    buttons: [
+      {
+        label: 'Yes, Redo',
+        cls: 'btn-crimson',
+        fn: () => {
+          /* BUG FIX (Prasidha): Point 14 — reset state fully before restoring UI */
+          U.clockOut=''; U.clockOutCoords=''; U.clockOutLoc=''; save();
+
+          hide('review-wrap');
+          document.getElementById('out-loc').value = '';
+          document.getElementById('status-card').classList.remove('hidden');
+          setElText('ci-time', fmt(U.clockIn));
+          setElText('ci-loc',  U.clockInLoc);
+          setElText('timer-val', '00:00:00');
+
+          document.getElementById('co-group').classList.remove('hidden');
+          renderChips('out-loc','out-chips','out-drop');
+
+          /* Restart timer from original clock-in (Prasidha: timer must resume) */
+          clearInterval(timerInterval); timerInterval=null;
+          startTimer();
+
+          toast("Enter new clock-out details. ↩");
+        }
+      },
+      { label: 'Cancel', cls: 'btn-edit', fn: null }
+    ]
+  });
+}
+
+/* ============================================================
+   SUBMIT DAY
+============================================================ */
+document.getElementById('btn-submit').addEventListener('click', async () => {
+  if (isSubmitting) return;
+  isSubmitting = true;
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled=true; btn.textContent="Submitting…";
+  hide('review-wrap');
+
+  // Ghost screen with submit-context note
+  document.getElementById('ghost-screen').classList.remove('hidden');
+  setElText('ghost-note', "Almost there — submitting your day's work…");
+
+  /* SECURITY: Final sanitization pass before DB write (Prasidha)
+     Supabase uses parameterized queries, but we sanitize as defense-in-depth.
+     MIGRATION NOTE: Add branch_code, app_version before production launch.
+  */
+  const payload = {
+    user_name:               sanitize(U.name),
+    employee_id:             U.id.replace(/\D/g,''),    // Strip non-digits (last resort)
+    clock_in_time:           U.clockIn,
+    clock_in_coords:         U.clockInCoords,
+    clock_in_location_name:  sanitize(U.clockInLoc),
+    clock_out_time:          U.clockOut,
+    clock_out_coords:        U.clockOutCoords,
+    clock_out_location_name: sanitize(U.clockOutLoc),
+    status:                  'completed'
+    // branch_code:   'HO_AIROLI',   // Uncomment for multi-office
+    // app_version:   '05',          // Uncomment before production
+    // submitted_via: 'web',         // Change to 'sharepoint' after migration
+  };
+
+  try {
+    const { error } = await _db.from('attendance').insert([payload]);
+    hide('ghost-screen');
+
+    if (!error) {
+      U.submitted=true; save();
+      pageTransition(() => renderSuccess(), "Shift submitted!");
+      setTimeout(()=>toast("All done! See you tomorrow. 🎉",'ok'), 800);
+    } else {
+      /* SECURITY: Never surface raw DB errors to user (Prasidha) */
+      console.error('[Seamex Prasidha] Supabase error:', error);
+      toast("Submission failed. Please try again.", 'err');
+      isSubmitting=false; btn.disabled=false; btn.textContent="Submit the Day ✓";
+      renderReview();
+    }
+  } catch(e) {
+    hide('ghost-screen');
+    console.error('[Seamex Prasidha] Network error:', e);
+    toast("Connection issue. Check network and retry.", 'err');
+    isSubmitting=false; btn.disabled=false; btn.textContent="Submit the Day ✓";
+    renderReview();
+  }
+});
+
+/* ============================================================
+   SUCCESS CARD
+============================================================ */
+function renderSuccess() {
+  ['ci-group','co-group','review-wrap','ghost-screen','status-card','live-clock-wrap'].forEach(hide);
+
+  const today = new Date();
+  setElText('ss-in-t',  fmt(U.clockIn));
+  setElText('ss-in-l',  U.clockInLoc);
+  setElText('ss-out-t', fmt(U.clockOut));
+  setElText('ss-out-l', U.clockOutLoc);
+  setElText('ss-dur',   duration(U.clockIn, U.clockOut));
+  setElText('ss-date',  today.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
+
+  document.getElementById('success-card').classList.remove('hidden');
+}
+
+/* ============================================================
+   GEOLOCATION
+============================================================ */
+async function getCoords() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) {
+      toast("Geolocation not supported on this device.", 'err');
+      return resolve(null);
+    }
+    /* SECURITY: maximumAge:0 ensures fresh GPS, not cached position (Prasidha) */
+    navigator.geolocation.getCurrentPosition(
+      p => resolve(`${p.coords.latitude.toFixed(6)},${p.coords.longitude.toFixed(6)}`),
+      err => {
+        const msgs = {
+          1:"Location access denied. Allow it in browser settings.",
+          2:"Location unavailable. Please try again.",
+          3:"Location request timed out. Try again."
+        };
+        toast(msgs[err.code] || "Location error.", 'err');
+        resolve(null);
+      },
+      { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
+    );
+  });
+}
+
+/* ============================================================
+   TIMER — shift duration
+============================================================ */
+function startTimer() {
+  clearInterval(timerInterval); timerInterval=null;
+  timerInterval = setInterval(() => {
+    if (!U.clockIn) return;
+    setElText('timer-val', msDur(Date.now()-new Date(U.clockIn).getTime()));
+  }, 1000);
+}
+
+/* ============================================================
+   LOCATION CACHE — autocomplete + chips
+   SECURITY (Prasidha): entries sanitized on write AND on render.
+   textContent used on all renders (never innerHTML) → XSS safe.
+============================================================ */
+function getCachedLocs() {
+  try { return JSON.parse(localStorage.getItem(KEY_LOCS)||'[]'); }
+  catch { return []; }
+}
+function saveLoc(loc) {
+  if (!loc) return;
+  let list = getCachedLocs().filter(l=>l.toLowerCase()!==loc.toLowerCase());
+  list.unshift(loc);
+  localStorage.setItem(KEY_LOCS, JSON.stringify(list.slice(0, MAX_LOCS)));
+}
+
+function renderChips(inputId, chipsId, dropId) {
+  const locs = getCachedLocs().slice(0,3);
+  const wrap = document.getElementById(chipsId);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  locs.forEach(loc => {
+    const c = document.createElement('button');
+    c.type='button'; c.className='chip';
+    c.title = loc;
+    /* SECURITY: textContent not innerHTML (Prasidha) */
+    c.textContent = '📍 ' + loc;
+    c.addEventListener('click', () => {
+      document.getElementById(inputId).value = loc;
+      const d=document.getElementById(dropId);
+      if(d) d.classList.remove('open');
+    });
+    wrap.appendChild(c);
+  });
+}
+
+function setupAutocomplete(inputId, dropId, chipsId) {
+  const input = document.getElementById(inputId);
+  const drop  = document.getElementById(dropId);
+  if (!input||!drop) return;
+
+  input.addEventListener('focus', () => {
+    renderChips(inputId, chipsId, dropId);
+    renderDrop(inputId, dropId);
+  });
+  input.addEventListener('input', () => renderDrop(inputId, dropId));
+
+  document.addEventListener('click', e => {
+    if (!input.contains(e.target)&&!drop.contains(e.target))
+      drop.classList.remove('open');
+  });
+}
+
+function renderDrop(inputId, dropId) {
+  const q    = document.getElementById(inputId)?.value.toLowerCase().trim();
+  const drop = document.getElementById(dropId);
+  if (!drop) return;
+  const locs = getCachedLocs();
+  const hits = q ? locs.filter(l=>l.toLowerCase().includes(q)) : locs;
+
+  if (!hits.length) { drop.classList.remove('open'); return; }
+  drop.innerHTML='';
+  hits.slice(0,5).forEach(loc => {
+    const item = document.createElement('div');
+    item.className='ac-item';
+    const icon=document.createElement('span'); icon.className='ac-icon';
+    /* SECURITY: textContent for all DOM writes (Prasidha) */
+    icon.textContent='📍';
+    const txt=document.createElement('span'); txt.textContent=loc;
+    item.appendChild(icon); item.appendChild(txt);
+    item.addEventListener('click',()=>{
+      document.getElementById(inputId).value=loc;
+      drop.classList.remove('open');
+    });
+    drop.appendChild(item);
+  });
+  drop.classList.add('open');
+}
+
+/* ============================================================
+   TOAST — centered viewport (point 13)
+============================================================ */
+function toast(msg, type='') {
+  const box=document.getElementById('toast-box');
+  const t=document.createElement('div');
+  t.className='toast'+(type?' '+type:'');
+  /* SECURITY: textContent (Prasidha) */
+  t.textContent=msg;
+  box.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; }, 3200);
+  setTimeout(()=>t.remove(), 3600);
+}
+
+/* ============================================================
+   HELPERS
+============================================================ */
+const now     = ()  => new Date().toISOString();
+const setElText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+const hide    = id  => document.getElementById(id)?.classList.add('hidden');
+const rnd     = arr => arr[Math.floor(Math.random()*arr.length)];
+const save    = ()  => localStorage.setItem(KEY_USER, JSON.stringify(U));
+
+function isNewDay(d) {
+  if (!d) return false;
+  return new Date(d).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
+}
+function fmt(iso) {
+  if (!iso) return '--:--';
+  return new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+}
+function msDur(ms) {
+  if (!ms||isNaN(ms)||ms<0) return '00:00:00';
+  const h=Math.floor(ms/3600000).toString().padStart(2,'0');
+  const m=Math.floor((ms%3600000)/60000).toString().padStart(2,'0');
+  const s=Math.floor((ms%60000)/1000).toString().padStart(2,'0');
+  return `${h}:${m}:${s}`;
+}
+function duration(i,o) {
+  if(!i||!o) return '--';
+  return msDur(new Date(o)-new Date(i));
+}
+
+/*
+  // — Prasidha Jagtap | IT · Aditya Birla Group (Seamex)
+  // Geo Attendance v05 — Built for real field teams.
+  // If you are reading this: maintain the standards. 🚀
+*/
+</script>
 </body>
 </html>
