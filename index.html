@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+A<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
@@ -438,15 +438,9 @@
       align-items:center;justify-content:center;
       background:var(--bg-a);
       opacity:0;pointer-events:none;
-      transition:opacity .24s var(--ease);
+      transition:opacity .32s var(--ease);
     }
     #pg-transition.on{opacity:1;pointer-events:all}
-    #pg-transition .pt-wrap,
-    #pg-transition .pt-msg{transform:translateX(0);opacity:1}
-    #pg-transition[data-dir="forward"].on .pt-wrap{animation:ptEnterFwd .42s var(--ease) both}
-    #pg-transition[data-dir="forward"].on .pt-msg{animation:ptMsgFwd .42s var(--ease) .04s both}
-    #pg-transition[data-dir="back"].on .pt-wrap{animation:ptEnterBack .42s var(--ease) both}
-    #pg-transition[data-dir="back"].on .pt-msg{animation:ptMsgBack .42s var(--ease) .04s both}
     .pt-wrap{position:relative;width:88px;height:88px;margin-bottom:18px}
     .pt-wrap svg{width:88px;height:88px}
     .pt-ring{
@@ -459,10 +453,6 @@
     .pt-p{position:absolute;font-size:1.2rem;opacity:0;animation:ptFloat 1.5s ease forwards}
     @keyframes ptFloat{0%{opacity:0;transform:translateY(0) scale(.7)}20%{opacity:1}80%{opacity:.8}100%{opacity:0;transform:translateY(-86px) scale(1.05)}}
     .pt-msg{font-size:.8rem;font-weight:500;font-style:italic;color:var(--tx2);animation:pulse2 1.5s ease infinite}
-    @keyframes ptEnterFwd{from{transform:translateX(24px) scale(.94);opacity:0}to{transform:translateX(0) scale(1);opacity:1}}
-    @keyframes ptMsgFwd{from{transform:translateX(14px);opacity:0}to{transform:translateX(0);opacity:1}}
-    @keyframes ptEnterBack{from{transform:translateX(-24px) scale(.94);opacity:0}to{transform:translateX(0) scale(1);opacity:1}}
-    @keyframes ptMsgBack{from{transform:translateX(-14px);opacity:0}to{transform:translateX(0);opacity:1}}
     /* PT clock hands — same smooth transition */
     #pt-h,#pt-m,#pt-s{transform-origin:36px 36px;transition:transform .9s cubic-bezier(.45,.05,.55,.95)}
     #pt-s{transition-duration:.5s!important}
@@ -616,50 +606,6 @@
     .toast.err{background:rgba(185,28,28,.92)}
     @keyframes tPop{from{opacity:0;transform:scale(.88) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
-    .recover-btn{
-      display:inline-flex!important;align-items:center;justify-content:center;
-      width:32px;height:32px;margin:0!important;padding:0!important;
-      border-radius:50%!important;border:1px solid var(--bdr)!important;
-      background:var(--bg-sub)!important;color:var(--orange)!important;
-      cursor:pointer;flex-shrink:0;box-shadow:var(--sh-sm);
-      transition:transform var(--t) var(--ease), opacity var(--t) var(--ease), border-color var(--t) var(--ease)!important;
-    }
-    .recover-btn:hover{border-color:var(--orange)!important;transform:scale(1.04)}
-    .recover-btn.hidden{display:none!important}
-    .recover-spin{display:inline-block;font-size:.92rem;line-height:1;animation:prasidhaSpin 1s linear infinite}
-    @keyframes prasidhaSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-
-    /* ================================================================
-       MODAL TOAST — blocks interaction for a quick, readable read
-       Prasidha: background blur, short dwell, then clean dismiss.
-    ================================================================ */
-    #toast-ov{
-      position:fixed;inset:0;z-index:9990;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(4,7,18,.22);
-      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-      opacity:0;pointer-events:none;
-      transition:opacity .18s var(--ease);
-    }
-    #toast-ov.open{opacity:1;pointer-events:all}
-    #toast-box{
-      position:relative;width:min(88vw,320px);
-      display:flex;flex-direction:column;align-items:center;gap:8px;
-      pointer-events:auto;
-    }
-    .toast{
-      padding:12px 20px;border-radius:var(--r-pill);
-      font-size:.83rem;font-weight:600;line-height:1.35;
-      background:rgba(28,28,50,.94);color:#fff;
-      box-shadow:var(--sh-lg);
-      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-      text-align:center;animation:toastIn .24s var(--ease) both;
-      max-width:100%;
-    }
-    .toast.ok {background:rgba(21,128,61,.94)}
-    .toast.err{background:rgba(185,28,28,.94)}
-    @keyframes toastIn{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-
     /* Utility */
     .hidden{display:none!important}
     .mt8{margin-top:8px} .mt12{margin-top:12px} .mt16{margin-top:16px}
@@ -779,9 +725,6 @@
       <div class="smx-footer">
         <button class="theme-btn" id="th-btn-auth" onclick="cycleTheme()">
           <span id="t-ico-a">🌙</span><span id="t-lbl-a">Dark</span>
-        </button>
-        <button class="recover-btn hidden" id="prasidha-recover-auth" type="button" title="Refresh this view without resetting your session" aria-label="Refresh this view without resetting your session">
-          <span class="recover-spin" id="prasidha-recover-auth-ico">↻</span>
         </button>
         <p class="footer-disc">By using this app you confirm<br>your location data is accurate.</p>
       </div>
@@ -940,9 +883,6 @@
         <button class="theme-btn" id="th-btn-main" onclick="cycleTheme()">
           <span id="t-ico-m">🌙</span><span id="t-lbl-m">Dark</span>
         </button>
-        <button class="recover-btn hidden" id="prasidha-recover-main" type="button" title="Refresh this view without resetting your session" aria-label="Refresh this view without resetting your session">
-          <span class="recover-spin" id="prasidha-recover-main-ico">↻</span>
-        </button>
         <p class="footer-disc">Location data is captured for<br>attendance purposes only.</p>
       </div>
 
@@ -950,11 +890,50 @@
   </div>
 </main>
 
-<div id="toast-ov" aria-live="polite" aria-atomic="true">
-  <div id="toast-box"></div>
-</div>
+<div id="toast-box"></div>
 
 <script>
+
+/* ==== SURGICAL STABILITY PATCH — Prasidha ==== */
+function g(id){ return document.getElementById(id); }
+function setTx(id, val){
+  const el = (typeof id === 'string') ? g(id) : id;
+  if(!el) return;
+  el.textContent = val;
+}
+let __lastAlive = Date.now();
+function __markAlive(){ __lastAlive = Date.now(); }
+function __startWatchdog(){
+  setInterval(()=>{
+    if(Date.now() - __lastAlive > 5000){
+      const btns = [g('prasidha-recover-auth'), g('prasidha-recover-main')];
+      btns.forEach(b=>{ if(b) b.classList.remove('hidden'); });
+    }
+  }, 2000);
+}
+function __softReload(sectionId){
+  const sec = g(sectionId);
+  if(!sec) return;
+  const clone = sec.cloneNode(true);
+  sec.parentNode.replaceChild(clone, sec);
+  console.log('Seamex: soft DOM reload done');
+}
+function __bindRecovery(){
+  const a = g('prasidha-recover-auth');
+  const m = g('prasidha-recover-main');
+  if(a){ a.onclick = ()=>{ __markAlive(); __softReload('auth-sec'); }; }
+  if(m){ m.onclick = ()=>{ __markAlive(); __softReload('main-sec'); }; }
+}
+function __toast(msg, type='ok'){
+  const ov = document.getElementById('toast-ov');
+  const box = document.getElementById('toast-box');
+  if(!ov || !box) return;
+  box.innerHTML = '<div class="toast '+type+'">'+msg+'</div>';
+  ov.classList.add('open');
+  setTimeout(()=>{ ov.classList.remove('open'); box.innerHTML=''; }, 1500);
+}
+/* ==== END PATCH ==== */
+
 /* ============================================================
    SEAMEX GEO-ATTENDANCE | v06 — Golden Build
    ============================================================
@@ -1055,7 +1034,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (p?.name && p?.id && typeof p.isClockedIn === 'boolean' && !isNewDay(p.lastActionDate)) {
         U = p;
         renderMain(); // FIX-01: renderMain handles section switching internally
-        bindRecoveryControls();
         return;
       }
       localStorage.removeItem(KEY_USER); // stale or invalid — fresh start
@@ -1066,7 +1044,8 @@ window.addEventListener('DOMContentLoaded', () => {
   setupLoginValidation();
   setupAC('in-loc', 'in-drop', 'in-chips');
   setupAC('out-loc','out-drop','out-chips');
-  bindRecoveryControls();
+  __bindRecovery();
+  __startWatchdog();
 });
 
 /* ============================================================
@@ -1167,13 +1146,11 @@ function rot(id,deg) { const e=g(id); if(e) e.style.transform=`rotate(${deg}deg)
 /* ============================================================
    PAGE TRANSITION — CRED-style
 ============================================================ */
-function pageTransition(fn, msg, dir='forward') {
+function pageTransition(fn, msg) {
   const ov   = g('pg-transition');
   const msgEl= g('pt-msg');
   const pts  = g('pt-parts');
 
-  if(!ov || !msgEl || !pts){ if(fn) fn(); return; }
-  ov.dataset.dir = dir;
   if(msgEl) msgEl.textContent = msg||rnd(PT_MSGS);
 
   // Spawn floating time emojis
@@ -1201,26 +1178,21 @@ function pageTransition(fn, msg, dir='forward') {
    - All DOM writes: textContent — never innerHTML (XSS prevention)
    - Re-validate on click, not just on keyup (defense-in-depth)
 ============================================================ */
-const isValidName = s => /^(?=.{2,50}$)[A-Za-z]+(?:[ ][A-Za-z]+)*$/.test(s.trim());
-const isValidId   = s => /^(?=.{3,12}$)[0-9]+$/.test(s.trim());
-const isValidLoc  = s => /^(?=.{2,60}$)[A-Za-z0-9]+(?:[ ][A-Za-z0-9-]+)*$/.test(s.trim());
-const sanitize    = s => s.trim().replace(/[<>"'`%;(){}\\\/=+|#@]/g,'').replace(/\s{2,}/g,' ').slice(0,60);
+const isValidName = s => /^[a-zA-Z\s]{2,60}$/.test(s.trim());
+const isValidId   = s => /^[0-9]{3,12}$/.test(s.trim());
+const isValidLoc  = s => /^[a-zA-Z0-9 \-]{2,60}$/.test(s.trim());
+const sanitize    = s => s.trim().replace(/[<>"'`%;(){}\\\/=+|#@]/g,'').slice(0,60);
 
 function setupLoginValidation() {
   const nIn=g('inp-name'), iIn=g('inp-id'), btn=g('btn-start');
-  if(!nIn || !iIn || !btn) return;
-  if(nIn.dataset.prasidhaBound === '1') return;
-  nIn.dataset.prasidhaBound = '1';
-  iIn.dataset.prasidhaBound = '1';
   const chk=()=>{
     const n=nIn.value.trim(), i=iIn.value.trim();
     g('err-name').style.display = n&&!isValidName(n)?'block':'none';
     g('err-id')  .style.display = i&&!isValidId(i)  ?'block':'none';
     btn.disabled = !(isValidName(n)&&isValidId(i));
   };
-  nIn.addEventListener('input',chk,{passive:true});
-  iIn.addEventListener('input',chk,{passive:true});
-  chk();
+  nIn.addEventListener('input',chk);
+  iIn.addEventListener('input',chk);
 }
 
 /* ============================================================
@@ -1256,13 +1228,20 @@ g('btn-start').addEventListener('click',()=>{
    btn-start click OR from session restore, auth is hidden
    and main is shown. The refresh-to-login bug is eliminated.
 ============================================================ */
-function renderMain(skipBoot=false) {
+function renderMain() {
   // FIX-01: Always enforce correct section state (Prasidha)
   hide('auth-sec');
   g('main-sec').classList.remove('hidden');
 
   setTx('disp-name', U.name);
   setTx('disp-id',   U.id);
+
+  // Start unified animation loop
+  startMainLoop();
+
+  // Setup autocomplete on all inputs
+  setupAC('in-loc',  'in-drop',  'in-chips');
+  setupAC('out-loc', 'out-drop', 'out-chips');
 
   if (U.submitted) { renderSuccess(); return; }
 
@@ -1284,16 +1263,6 @@ function renderMain(skipBoot=false) {
     renderChips('in-loc','in-chips','in-drop');
     setupLoginValidation();
   }
-
-  if (skipBoot) { setRecoveryButtons(false); return; }
-
-  // Start unified animation loop
-  startMainLoop();
-
-  // Setup autocomplete on all inputs
-  setupAC('in-loc',  'in-drop',  'in-chips');
-  setupAC('out-loc', 'out-drop', 'out-chips');
-  setRecoveryButtons(false);
 }
 
 /* ============================================================
@@ -1312,13 +1281,11 @@ g('btn-ci').addEventListener('click', async ()=>{
 
   const btn=g('btn-ci');
   btn.disabled=true; btn.textContent="Fetching location…";
-  armDomWatchdog('clock-in');
 
   // ── FIX-02: GPS with safety timeout (Prasidha)
   const coords = await getCoords();
 
   if(!coords){
-    clearDomWatchdog();
     btn.disabled=false; btn.textContent="Clock In"; return;
   }
 
@@ -1335,10 +1302,9 @@ g('btn-ci').addEventListener('click', async ()=>{
     setTx('ci-loc',  U.clockInLoc);
     g('co-grp').classList.remove('hidden');
     renderChips('out-loc','out-chips','out-drop');
-    clearDomWatchdog();
-  }, "Clock-in saved. Next step…", 'forward');
+  }, "Clocked in! Shift started.");
 
-  btn.disabled=false; btn.textContent="Clock In";
+  setTimeout(()=>toast("Clocked in! Have a great shift.",'ok'), 700);
 });
 
 /* ============================================================
@@ -1352,6 +1318,7 @@ g('btn-ci').addEventListener('click', async ()=>{
 g('btn-co').addEventListener('click', async ()=>{
   const raw=g('out-loc').value;
   if(!raw.trim()){ toast("Please enter a location name."); return; }
+
   if(!isValidLoc(raw)){
     g('err-out-loc').style.display='block';
     toast("Use letters, numbers, spaces or hyphens only.",'err'); return;
@@ -1360,13 +1327,21 @@ g('btn-co').addEventListener('click', async ()=>{
 
   const btn=g('btn-co');
   btn.disabled=true; btn.textContent="Fetching location…";
-  armDomWatchdog('clock-out');
 
-  const coords = await getCoords();
+  // Show ghost, hide co-grp (timer keeps running in rAF — FIX-04)
+  g('ghost-note').textContent = rnd(GHOST_NOTES);
+  g('ghost-scr').classList.remove('hidden');
+  hide('co-grp');
+
+  let coords;
+  try {
+    coords = await getCoords();
+  } catch(e) {
+    coords = null;
+  }
 
   if(!coords){
-    clearDomWatchdog();
-    // In case of GPS failure (Prasidha), return to visible clock-out state.
+    // ── FIX-04: Full UI restore on GPS failure (Prasidha)
     // In v05, ghost stayed visible and timer appeared stopped.
     // rAF loop is still running, so shift timer never paused.
     hide('ghost-scr');
@@ -1383,9 +1358,8 @@ g('btn-co').addEventListener('click', async ()=>{
 
   setTimeout(()=>{
     hide('ghost-scr');
-    pageTransition(()=>renderReview(), "Shift logged. Review below.", 'forward');
+    pageTransition(()=>renderReview(), "Shift logged. Review below.");
     setTimeout(()=>toast("Clocked out! Review your shift.",'ok'), 500);
-    clearDomWatchdog();
   }, 1800);
 });
 
@@ -1407,7 +1381,6 @@ function renderReview() {
   setTx('r-dur',   duration(U.clockIn, U.clockOut));
 
   g('review-wrap').classList.remove('hidden');
-  setRecoveryButtons(false);
 }
 
 /* ============================================================
@@ -1544,7 +1517,6 @@ function showRedoBanner(prevTime, prevLoc) {
 g('btn-submit').addEventListener('click', async ()=>{
   if(isSubmitting) return;
   isSubmitting=true;
-  armDomWatchdog('submit');
 
   const btn=g('btn-submit');
   btn.disabled=true; btn.textContent="Submitting…";
@@ -1579,16 +1551,14 @@ g('btn-submit').addEventListener('click', async ()=>{
 
     if(!error){
       U.submitted=true; save();
-      pageTransition(()=>renderSuccess(), "Shift submitted!", 'forward');
+      pageTransition(()=>renderSuccess(), "Shift submitted!");
       setTimeout(()=>toast("All done! See you tomorrow.",'ok'), 800);
-      clearDomWatchdog();
     } else {
       // SECURITY: Never surface raw DB error to user (Prasidha)
       console.error('[Seamex | Prasidha] Supabase error:', error);
       toast("Submission failed. Please try again.",'err');
       isSubmitting=false; btn.disabled=false; btn.textContent="Submit the Day ✓";
       renderReview();
-      clearDomWatchdog();
     }
   } catch(e) {
     hide('ghost-scr');
@@ -1596,7 +1566,6 @@ g('btn-submit').addEventListener('click', async ()=>{
     toast("Connection issue. Check network and retry.",'err');
     isSubmitting=false; btn.disabled=false; btn.textContent="Submit the Day ✓";
     renderReview();
-    clearDomWatchdog();
   }
 });
 
@@ -1604,7 +1573,6 @@ g('btn-submit').addEventListener('click', async ()=>{
    SUCCESS CARD — minimal, centered, no emojis, continuous halo
 ============================================================ */
 function renderSuccess() {
-  clearDomWatchdog();
   stopMainLoop(); // No live clock needed on success screen
   ['ci-grp','co-grp','review-wrap','ghost-scr','status-card'].forEach(hide);
 
@@ -1694,8 +1662,6 @@ function renderChips(inputId, chipsId, dropId) {
 function setupAC(inputId, dropId, chipsId) {
   const input=g(inputId), drop=g(dropId);
   if(!input||!drop) return;
-  if(input.dataset.prasidhaAcBound === '1') return;
-  input.dataset.prasidhaAcBound = '1';
   input.addEventListener('focus',()=>{ renderChips(inputId,chipsId,dropId); renderDrop(inputId,dropId); });
   input.addEventListener('input',()=>renderDrop(inputId,dropId));
   document.addEventListener('click',e=>{
@@ -1723,89 +1689,13 @@ function renderDrop(inputId, dropId) {
    TOAST — centered viewport
 ============================================================ */
 function toast(msg, type='') {
-  const ov=g('toast-ov');
   const box=g('toast-box');
-  if(!ov || !box) return;
-  box.innerHTML='';
   const t=document.createElement('div');
   t.className='toast'+(type?' '+type:'');
   t.textContent=msg; // SECURITY: textContent (Prasidha)
   box.appendChild(t);
-  ov.classList.add('open');
-  clearTimeout(window.__prasidhaToastTimer);
-  window.__prasidhaToastTimer = setTimeout(()=>{
-    ov.classList.remove('open');
-    box.innerHTML='';
-  }, 1500);
-}
-
-/* ============================================================
-   PRASIDHA RECOVERY + VIEW STATE HELPERS
-============================================================ */
-let domWatchdogTimer = null;
-let domWatchdogReason = '';
-
-function currentViewKey() {
-  if (!g('auth-sec')?.classList.contains('hidden')) return 'auth';
-  if (!g('suc-card')?.classList.contains('hidden')) return 'success';
-  if (!g('review-wrap')?.classList.contains('hidden')) return 'review';
-  if (!g('ghost-scr')?.classList.contains('hidden')) return 'ghost';
-  if (!g('co-grp')?.classList.contains('hidden')) return 'clockout';
-  return 'main';
-}
-
-function setRecoveryButtons(show) {
-  const authBtn = g('prasidha-recover-auth');
-  const mainBtn = g('prasidha-recover-main');
-  const inAuth = currentViewKey() === 'auth';
-  if(authBtn) authBtn.classList.toggle('hidden', !(show && inAuth));
-  if(mainBtn) mainBtn.classList.toggle('hidden', !(show && !inAuth));
-}
-
-function clearDomWatchdog() {
-  if (domWatchdogTimer) { clearTimeout(domWatchdogTimer); domWatchdogTimer = null; }
-  domWatchdogReason = '';
-  setRecoveryButtons(false);
-}
-
-function armDomWatchdog(reason='ui') {
-  clearDomWatchdog();
-  domWatchdogReason = reason;
-  domWatchdogTimer = setTimeout(() => {
-    setRecoveryButtons(true);
-  }, 5000);
-}
-
-function syncAuthDom() {
-  g('auth-sec')?.classList.remove('hidden');
-  g('main-sec')?.classList.add('hidden');
-  setupLoginValidation();
-  setupAC('in-loc', 'in-drop', 'in-chips');
-  setupAC('out-loc', 'out-drop', 'out-chips');
-  setRecoveryButtons(false);
-}
-
-function softReloadVisibleSection() {
-  const view = currentViewKey();
-  clearDomWatchdog();
-  if (view === 'auth') {
-    syncAuthDom();
-    toast('View refreshed.', 'ok');
-    return;
-  }
-  if (view === 'success') {
-    renderSuccess();
-    toast('View refreshed.', 'ok');
-    return;
-  }
-  renderMain(true);
-  toast('View refreshed.', 'ok');
-}
-
-function bindRecoveryControls() {
-  g('prasidha-recover-auth')?.addEventListener('click', softReloadVisibleSection);
-  g('prasidha-recover-main')?.addEventListener('click', softReloadVisibleSection);
-  setRecoveryButtons(false);
+  setTimeout(()=>{ t.style.cssText='opacity:0;transition:opacity .3s'; }, 3100);
+  setTimeout(()=>t.remove(), 3500);
 }
 
 /* ============================================================
